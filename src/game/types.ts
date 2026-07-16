@@ -1,14 +1,12 @@
-/** Types de cases. Les effets concrets viendront plus tard. */
+/** Les six types de cases, plus le départ, qui est structurel. */
 export type TypeCase =
   | "depart"
-  | "bonus"
-  | "grosBonus"
-  | "malus"
   | "defi"
+  | "bonus"
+  | "malus"
   | "evenement"
   | "boutique"
-  | "etoile"
-  | "neutre";
+  | "etoile";
 
 export interface Case {
   id: string;
@@ -23,9 +21,8 @@ export interface Case {
 export interface Plateau {
   graine: number;
   cases: Record<string, Case>;
-  /** Case de départ. */
   depart: string;
-  /** Cases où l'étoile peut apparaître (toutes de type "etoile"). */
+  /** Cases où une étoile peut apparaître (toutes de type "etoile"). */
   emplacementsEtoile: string[];
   /** Boîte englobante, pour cadrer la caméra. */
   limites: { minX: number; minY: number; maxX: number; maxY: number };
@@ -35,24 +32,30 @@ export interface Pion {
   id: string;
   nom: string;
   couleur: string;
-  /** Les joueurs derrière ce pion. Un seul nom = joueur solo, plusieurs = équipe. */
+  /** Un seul nom = joueur solo, plusieurs = équipe. */
   membres: string[];
   caseId: string;
   pieces: number;
   etoiles: number;
+  /** Gorgées achetées, à distribuer quand on veut pendant la partie. */
+  gorgees: number;
 }
 
 /**
- * Phase courante du tour. Le réducteur n'accepte que les actions correspondant
- * à la phase, ce qui évite qu'un client désynchronisé injecte n'importe quoi.
+ * Phase courante. Le réducteur n'accepte que les actions correspondant à la
+ * phase, ce qui évite qu'un client désynchronisé injecte n'importe quoi.
  */
 export type Phase =
   | "lancer"
   | "deplacement"
   | "croisement"
   | "resolution"
-  | "achatEtoile"
+  | "choixMalus"
+  | "boutique"
+  | "choixAdversaire"
+  | "defiDuel"
   | "finTour"
+  | "defiCollectif"
   | "terminee";
 
 export interface EntreeJournal {
@@ -64,22 +67,20 @@ export interface EntreeJournal {
 export interface EtatPartie {
   plateau: Plateau;
   pions: Pion[];
-  /** Ordre de passage, par id de pion. */
   ordreTour: string[];
   indexTour: number;
   manche: number;
   phase: Phase;
 
-  /** Dernier jet de dé, pour l'affichage. */
   de: number | null;
-  /** Cases qu'il reste à parcourir pour le pion actif. */
   pasRestants: number;
   /** En phase "croisement", les cases entre lesquelles choisir. */
   choix: string[];
+  /** En phase "defiDuel", le pion défié par le pion actif. */
+  adversaireId: string | null;
 
   /** Cases portant une étoile en ce moment. */
   etoilesSur: string[];
-  prixEtoile: number;
   /** Étoiles qu'il reste à distribuer d'ici la fin de la partie. */
   etoilesRestantes: number;
 
@@ -93,5 +94,12 @@ export type Action =
   | { type: "AVANCER" }
   | { type: "CHOISIR_CHEMIN"; caseId: string }
   | { type: "RESOUDRE_CASE" }
-  | { type: "ACHETER_ETOILE"; acheter: boolean }
-  | { type: "FIN_TOUR" };
+  | { type: "CHOISIR_MALUS"; gage: boolean }
+  | { type: "ACHETER_ETOILE" }
+  | { type: "ACHETER_GORGEES"; nombre: number }
+  | { type: "QUITTER_BOUTIQUE" }
+  | { type: "CHOISIR_ADVERSAIRE"; pionId: string }
+  | { type: "RESOUDRE_DEFI"; vainqueurId: string }
+  | { type: "DONNER_GORGEE"; donneurId: string; receveurId: string }
+  | { type: "FIN_TOUR" }
+  | { type: "RESOUDRE_DEFI_COLLECTIF"; vainqueurId: string };

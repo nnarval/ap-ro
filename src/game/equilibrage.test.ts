@@ -11,71 +11,80 @@ const PIONS: DefinitionPion[] = [
   { nom: "D", membres: ["d"] },
 ];
 
-/** Manches jouables en 20 minutes, d'après le rythme visé (~3,5 min/manche). */
+/** Manches jouables en 20 minutes, d'après le rythme visé. */
 const MANCHES_CIBLE = 6;
 
 type Rng = ReturnType<typeof creerRng>;
 
-interface Mesures {
-  etat: EtatPartie;
-  /** Tours de pion joués. */
-  tours: number;
-  /** Fois où un pion s'est arrêté sur une case portant une étoile. */
-  atterrissages: number;
-  /** Parmi ceux-là, ceux où il avait de quoi payer. */
-  solvables: number;
-  piecesMax: number;
+/**
+ * Un pas de simulation.
+ *
+ * Le choix aux croisements doit rester aléatoire : une politique régulière
+ * enferme les pions dans une orbite périodique qui peut ne jamais croiser
+ * certaines cases, ce qui fausse la mesure.
+ *
+ * Le pion achète l'étoile dès qu'il peut : c'est une borne optimiste, de vrais
+ * joueurs feront moins bien, jamais mieux.
+ */
+function unPas(etat: EtatPartie, rng: Rng): EtatPartie {
+  switch (etat.phase) {
+    case "lancer":
+      return reduire(etat, { type: "LANCER_DE" });
+    case "deplacement":
+      return reduire(etat, { type: "AVANCER" });
+    case "croisement":
+      return reduire(etat, { type: "CHOISIR_CHEMIN", caseId: rng.element(etat.choix) });
+    case "resolution":
+      return reduire(etat, { type: "RESOUDRE_CASE" });
+    case "choixMalus":
+      return reduire(etat, { type: "CHOISIR_MALUS", gage: rng.reel() < 0.5 });
+    case "boutique":
+      return pionActif(etat).pieces >= REGLAGES.prixEtoileBoutique
+        ? reduire(etat, { type: "ACHETER_ETOILE" })
+        : reduire(etat, { type: "QUITTER_BOUTIQUE" });
+    case "choixAdversaire":
+      return reduire(etat, {
+        type: "CHOISIR_ADVERSAIRE",
+        pionId: rng.element(etat.pions.filter((p) => p.id !== pionActif(etat).id)).id,
+      });
+    case "defiDuel":
+      return reduire(etat, {
+        type: "RESOUDRE_DEFI",
+        vainqueurId: rng.reel() < 0.5 ? pionActif(etat).id : etat.adversaireId!,
+      });
+    case "finTour":
+      return reduire(etat, { type: "FIN_TOUR" });
+    case "defiCollectif":
+      return reduire(etat, {
+        type: "RESOUDRE_DEFI_COLLECTIF",
+        vainqueurId: rng.element(etat.pions).id,
+      });
+    default:
+      return etat;
+  }
 }
 
-/**
- * Joue jusqu'à `arret`. Le choix aux croisements doit rester aléatoire : une
- * politique régulière enferme les pions dans une orbite périodique qui peut ne
- * jamais croiser certaines cases, ce qui fausse la mesure.
- *
- * Le pion achète dès qu'il peut : c'est une borne optimiste, de vrais joueurs
- * feront moins bien, jamais mieux.
- */
-function jouer(graine: number, arret: (e: EtatPartie) => boolean): Mesures {
+function jouer(graine: number, arret: (e: EtatPartie) => boolean): EtatPartie {
   const rng: Rng = creerRng((graine ^ 0x5f3759df) >>> 0);
   let etat = creerPartie(graine, PIONS);
-  const m: Omit<Mesures, "etat"> = { tours: 0, atterrissages: 0, solvables: 0, piecesMax: 0 };
   let garde = 0;
 
   while (!arret(etat)) {
     if (garde++ > 2_000_000) throw new Error(`Boucle infinie, graine ${graine}`);
-
-    switch (etat.phase) {
-      case "lancer":
-        m.tours++;
-        etat = reduire(etat, { type: "LANCER_DE" });
-        break;
-      case "deplacement":
-        etat = reduire(etat, { type: "AVANCER" });
-        break;
-      case "croisement":
-        etat = reduire(etat, { type: "CHOISIR_CHEMIN", caseId: rng.element(etat.choix) });
-        break;
-      case "resolution": {
-        const p = pionActif(etat);
-        if (etat.etoilesSur.includes(p.caseId)) {
-          m.atterrissages++;
-          if (p.pieces >= etat.prixEtoile) m.solvables++;
-        }
-        etat = reduire(etat, { type: "RESOUDRE_CASE" });
-        break;
-      }
-      case "achatEtoile":
-        etat = reduire(etat, { type: "ACHETER_ETOILE", acheter: true });
-        break;
-      case "finTour":
-        etat = reduire(etat, { type: "FIN_TOUR" });
-        break;
-      default:
-        return { ...m, etat };
-    }
-    for (const p of etat.pions) m.piecesMax = Math.max(m.piecesMax, p.pieces);
+    etat = unPas(etat, rng);
   }
-  return { ...m, etat };
+  return etat;
+}
+
+/** D'où viennent les étoiles, d'après le journal. */
+function sources(etat: EtatPartie) {
+  const contient = (motif: string) =>
+    etat.journal.filter((e) => e.texte.includes(motif)).length;
+  return {
+    plateau: contient("trouve une étoile"),
+    boutique: contient("achète une étoile"),
+    defiCollectif: contient("défi de fin de manche"),
+  };
 }
 
 const somme = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -87,42 +96,37 @@ describe("équilibrage", () => {
 
   it("finit toujours par distribuer toutes les étoiles, sans jamais se bloquer", () => {
     for (const graine of graines) {
-      // Borne très large : on teste l'absence de blocage, pas la vitesse.
-      const { etat } = jouer(graine, (e) => e.phase === "terminee" || e.manche > 3000);
+      const etat = jouer(graine, (e) => e.phase === "terminee" || e.manche > 3000);
       expect(etat.phase, `graine ${graine}`).toBe("terminee");
       expect(somme(etat.pions.map((p) => p.etoiles))).toBe(REGLAGES.etoilesParPartie);
     }
   });
 
-  it("mesure ce qu'une partie de 20 minutes distribue réellement", () => {
-    const parties = graines.map((g) => jouer(g, (e) => e.manche > MANCHES_CIBLE));
-    const etoiles = parties.map((p) => somme(p.etat.pions.map((x) => x.etoiles)));
-    const atterrissages = somme(parties.map((p) => p.atterrissages));
-    const solvables = somme(parties.map((p) => p.solvables));
-
-    const completes = graines.map((g) => jouer(g, (e) => e.phase === "terminee").etat.manche);
+  it("distribue le gros des étoiles dans le temps imparti", () => {
+    const parties = graines.map((g) =>
+      jouer(g, (e) => e.manche > MANCHES_CIBLE || e.phase === "terminee"),
+    );
+    const etoiles = parties.map((e) => somme(e.pions.map((p) => p.etoiles)));
+    const src = parties.map(sources);
 
     console.log(
       [
         "",
-        `  Sur ${MANCHES_CIBLE} manches (la cible des 20 minutes) :`,
-        `    étoiles distribuées : ${moyenne(etoiles).toFixed(2)} en moyenne ` +
-          `(objectif ${REGLAGES.etoilesParPartie})`,
-        `    atterrissages sur une étoile : ${(atterrissages / parties.length).toFixed(2)} par partie`,
-        `    dont le pion pouvait payer : ${
-          atterrissages ? ((100 * solvables) / atterrissages).toFixed(0) : 0
-        }%`,
-        `    pièces max jamais atteintes : ${Math.max(...parties.map((p) => p.piecesMax))} ` +
-          `(prix de l'étoile : ${REGLAGES.prixEtoile})`,
+        `  Après ${MANCHES_CIBLE} manches (la cible des 20 minutes) :`,
+        `    étoiles distribuées : ${moyenne(etoiles).toFixed(1)} / ${REGLAGES.etoilesParPartie}`,
+        `    dont défi de fin de manche : ${moyenne(src.map((s) => s.defiCollectif)).toFixed(1)}`,
+        `         trouvées sur le plateau : ${moyenne(src.map((s) => s.plateau)).toFixed(1)}`,
+        `         achetées en boutique : ${moyenne(src.map((s) => s.boutique)).toFixed(1)}`,
         "",
-        `  Pour distribuer les ${REGLAGES.etoilesParPartie} étoiles, il faut en réalité ` +
-          `${mediane(completes)} manches (médiane), max ${Math.max(...completes)}.`,
+        `  Partie complète : ${mediane(
+          graines.map((g) => jouer(g, (e) => e.phase === "terminee").manche),
+        )} manches (médiane).`,
         "",
       ].join("\n"),
     );
 
-    // Garde-fou : le jour où l'économie sera revue, ce seuil doit sauter et
-    // c'est le signal qu'il faut le resserrer.
-    expect(moyenne(etoiles)).toBeLessThan(REGLAGES.etoilesParPartie);
+    // Le défi de fin de manche garantit une étoile par manche : sans lui, le
+    // plateau seul plafonnait à ~0,3 étoile par partie.
+    expect(moyenne(etoiles)).toBeGreaterThanOrEqual(MANCHES_CIBLE);
   });
 });

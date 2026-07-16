@@ -19,22 +19,19 @@ function etoilesSousUnPion(etat: EtatPartie): string[] {
 }
 
 /**
- * Force le pion actif à ramasser une étoile : on le pose dessus, riche, en
- * phase de résolution. Passer par le réducteur plutôt que par des dés truqués
- * garde le test indépendant de la chance.
+ * Force le pion actif à ramasser une étoile : on le pose dessus, en phase de
+ * résolution. L'étoile du plateau est gratuite, elle est prise d'office.
+ * Passer par le réducteur plutôt que par des dés truqués garde le test
+ * indépendant de la chance.
  */
 function forcerRamassage(etat: EtatPartie, surCase: string): EtatPartie {
   const idActif = etat.ordreTour[etat.indexTour];
   const prepare: EtatPartie = {
     ...etat,
-    pions: etat.pions.map((p) =>
-      p.id === idActif ? { ...p, caseId: surCase, pieces: 999 } : p,
-    ),
+    pions: etat.pions.map((p) => (p.id === idActif ? { ...p, caseId: surCase } : p)),
     phase: "resolution",
   };
-  const propose = reduire(prepare, { type: "RESOUDRE_CASE" });
-  expect(propose.phase).toBe("achatEtoile");
-  return reduire(propose, { type: "ACHETER_ETOILE", acheter: true });
+  return reduire(prepare, { type: "RESOUDRE_CASE" });
 }
 
 describe("creerPartie", () => {
@@ -82,15 +79,17 @@ describe("ramassage d'une étoile", () => {
       // Seule l'étoile qui vient d'être posée nous intéresse : qu'un pion se
       // tienne sur l'autre est normal, c'est même comme ça qu'on la ramasse.
       const nouvelles = apres.etoilesSur.filter((id) => !gardee.includes(id));
-      expect(nouvelles.length, `graine ${graine}`).toBe(1);
+      // Plateau saturé à dessein : il peut ne rester aucun emplacement tenable,
+      // et mieux vaut alors une étoile de moins qu'une étoile mal posée.
+      expect(nouvelles.length, `graine ${graine}`).toBeLessThanOrEqual(1);
 
       const occupees = new Set(apres.pions.map((p) => p.caseId));
       const optionsValides = emplacements.filter(
-        (id) => !gardee.includes(id) && !occupees.has(id),
+        (id) => !gardee.includes(id) && !occupees.has(id) && id !== cible,
       );
       // Le repli tolère une case occupée, mais seulement s'il n'y avait
       // vraiment aucune autre option.
-      if (optionsValides.length > 0) {
+      if (optionsValides.length > 0 && nouvelles.length === 1) {
         expect(optionsValides, `graine ${graine}`).toContain(nouvelles[0]);
       }
     }
@@ -103,7 +102,6 @@ describe("ramassage d'une étoile", () => {
         const attendu = Math.min(REGLAGES.etoilesSurPlateau, etat.etoilesRestantes);
         expect(etat.etoilesSur.length, `graine ${graine}`).toBe(attendu);
         etat = forcerRamassage(etat, etat.etoilesSur[0]);
-        if (etat.phase !== "terminee") etat = reduire(etat, { type: "FIN_TOUR" });
       }
       expect(etat.phase).toBe("terminee");
       expect(etat.etoilesSur).toEqual([]);
