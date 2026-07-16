@@ -1,4 +1,5 @@
 import { REGLAGES } from "./config";
+import { tirerDefi, type ModeJeu } from "./defis";
 import { genererPlateau } from "./plateau";
 import { tirerEntier } from "./rng";
 import type { Action, EntreeJournal, EtatPartie, Pion, Plateau } from "./types";
@@ -74,7 +75,11 @@ function regarnirEtoiles(
   return [liste, rng];
 }
 
-export function creerPartie(graine: number, definitions: DefinitionPion[]): EtatPartie {
+export function creerPartie(
+  graine: number,
+  definitions: DefinitionPion[],
+  mode: ModeJeu = "multi",
+): EtatPartie {
   if (definitions.length < REGLAGES.pionsMin || definitions.length > REGLAGES.pionsMax) {
     throw new Error(
       `Il faut entre ${REGLAGES.pionsMin} et ${REGLAGES.pionsMax} pions, reçu ${definitions.length}.`,
@@ -110,10 +115,12 @@ export function creerPartie(graine: number, definitions: DefinitionPion[]): Etat
     indexTour: 0,
     manche: 1,
     phase: "lancer",
+    mode,
     de: null,
     pasRestants: 0,
     choix: [],
     adversaireId: null,
+    defiId: null,
     etoilesSur,
     etoilesRestantes: REGLAGES.etoilesParPartie,
     rng,
@@ -176,23 +183,34 @@ function suite(etat: EtatPartie): EtatPartie["phase"] {
   return etat.etoilesRestantes > 0 ? "finTour" : "terminee";
 }
 
+/** Les pions présents sur la case du pion actif, lui compris. */
+export function pionsSurCaseActive(etat: EtatPartie): Pion[] {
+  const actif = pionActif(etat);
+  return etat.pions.filter((p) => p.caseId === actif.caseId);
+}
+
 /** Déplace le pion actif d'une case, en gérant le passage par le départ. */
 function avancerSur(etat: EtatPartie, caseId: string): EtatPartie {
   const pion = pionActif(etat);
   const passeParDepart = caseId === etat.plateau.depart;
   const pieces = pion.pieces + (passeParDepart ? REGLAGES.gainTourComplet : 0);
   const pasRestants = etat.pasRestants - 1;
+  const pions = majPionActif(etat, { caseId, pieces });
+  const journal = passeParDepart
+    ? noter(etat, `passe par le départ, +${REGLAGES.gainTourComplet} pièces`)
+    : etat.journal;
 
-  return {
-    ...etat,
-    pions: majPionActif(etat, { caseId, pieces }),
-    pasRestants,
-    choix: [],
-    phase: pasRestants > 0 ? "deplacement" : "resolution",
-    journal: passeParDepart
-      ? noter(etat, `passe par le départ, +${REGLAGES.gainTourComplet} pièces`)
-      : etat.journal,
-  };
+  const enChemin = { ...etat, pions, pasRestants, choix: [], journal };
+  if (pasRestants > 0) return { ...enChemin, phase: "deplacement" };
+
+  // Atterrissage sur une case déjà occupée : duel éclair avant que la case ne
+  // produise son effet.
+  const dejaLa = pions.some((p) => p.id !== pion.id && p.caseId === caseId);
+  if (dejaLa) {
+    const [defiId, rng] = tirerDefi("instantane", etat.mode, etat.rng);
+    return { ...enChemin, phase: "defiInstantane", defiId, rng };
+  }
+  return { ...enChemin, phase: "resolution" };
 }
 
 /**
@@ -333,6 +351,29 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
       return { ...etat, phase: "finTour" };
     }
 
+    case "RESOUDRE_DEFI_INSTANTANE": {
+      if (etat.phase !== "defiInstantane") return etat;
+      const participants = pionsSurCaseActive(etat);
+      const vainqueur = participants.find((p) => p.id === action.vainqueurId);
+      if (!vainqueur) return etat;
+
+      const perdants = participants.filter((p) => p.id !== vainqueur.id);
+      // Les gorgées bues ne sont pas de l'état de jeu : on les annonce, les
+      // joueurs boivent. Seules les gorgées achetées en boutique se stockent.
+      return {
+        ...etat,
+        defiId: null,
+        phase: "resolution",
+        journal: noter(
+          etat,
+          `${vainqueur.nom} gagne le duel éclair — ${perdants
+            .map((p) => p.nom)
+            .join(", ")} boivent ${REGLAGES.gorgeesPerdantInstantane} gorgées`,
+          vainqueur.id,
+        ),
+      };
+    }
+
     case "CHOISIR_ADVERSAIRE": {
       if (etat.phase !== "choixAdversaire") return etat;
       const actif = pionActif(etat);
@@ -340,9 +381,14 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
         return etat;
       }
       const defie = etat.pions.find((p) => p.id === action.pionId)!;
+      // Le défi n'est révélé qu'une fois l'adversaire choisi : sinon on
+      // choisirait sa victime en fonction de l'épreuve.
+      const [defiId, rng] = tirerDefi("duel", etat.mode, etat.rng);
       return {
         ...etat,
         adversaireId: action.pionId,
+        defiId,
+        rng,
         phase: "defiDuel",
         journal: noter(etat, `défie ${defie.nom}`),
       };
@@ -361,6 +407,7 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
           pieces: vainqueur.pieces + REGLAGES.gainDefiDuel,
         }),
         adversaireId: null,
+        defiId: null,
         phase: "finTour",
         journal: noter(
           etat,
@@ -390,7 +437,7 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
       // Le placement d'une étoile peut échouer quand tous les emplacements sont
       // occupés. Les pions ayant bougé depuis, on retente ici : sans ça le
       // plateau resterait à court d'étoiles jusqu'au prochain ramassage.
-      const [etoilesSur, rng] = regarnirEtoiles(
+      const [etoilesSur, rngApres] = regarnirEtoiles(
         etat.plateau,
         etat.pions,
         etat.etoilesSur,
@@ -399,12 +446,18 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
       );
 
       // Tour de table bouclé : la manche se termine par le défi collectif.
+      const finDeManche = indexTour === 0;
+      const [defiId, rng] = finDeManche
+        ? tirerDefi("collectif", etat.mode, rngApres)
+        : [null, rngApres];
+
       return {
         ...etat,
         indexTour,
         etoilesSur,
         rng,
-        phase: indexTour === 0 ? "defiCollectif" : "lancer",
+        defiId,
+        phase: finDeManche ? "defiCollectif" : "lancer",
         de: null,
         pasRestants: 0,
         choix: [],
@@ -425,6 +478,7 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
         indexTour: 0,
         de: null,
         pasRestants: 0,
+        defiId: null,
         phase: apres.etoilesRestantes > 0 ? "lancer" : "terminee",
         journal: noter(etat, `remporte le défi de fin de manche et une étoile`, vainqueur.id),
       };

@@ -87,18 +87,34 @@ describe("genererPlateau", () => {
     }
   });
 
-  it("envoie les malus en priorité sur les raccourcis", () => {
-    // Un raccourci plus court ET sans risque serait toujours le bon choix.
-    let raccourcisAvecMalus = 0;
-    let raccourcisTotal = 0;
+  it("rend les raccourcis plus risqués sans vider le circuit de ses malus", () => {
+    let malusRaccourci = 0;
+    let totalRaccourci = 0;
+    let malusCircuit = 0;
+    let totalCircuit = 0;
+    let plateauxSansMalusSurLeCircuit = 0;
+
     for (const graine of graines) {
+      let surCeCircuit = 0;
       for (const c of Object.values(genererPlateau(graine).cases)) {
-        if (!c.id.startsWith("r")) continue;
-        raccourcisTotal++;
-        if (c.type === "malus") raccourcisAvecMalus++;
+        if (c.id.startsWith("r")) {
+          totalRaccourci++;
+          if (c.type === "malus") malusRaccourci++;
+        } else {
+          totalCircuit++;
+          if (c.type === "malus") surCeCircuit++;
+        }
       }
+      malusCircuit += surCeCircuit;
+      if (surCeCircuit === 0) plateauxSansMalusSurLeCircuit++;
     }
-    expect(raccourcisAvecMalus / raccourcisTotal).toBeGreaterThan(0.5);
+
+    // Un raccourci plus court ET sans risque serait toujours le bon choix.
+    expect(malusRaccourci / totalRaccourci).toBeGreaterThan(
+      1.5 * (malusCircuit / totalCircuit),
+    );
+    // Mais qui ne prend jamais de raccourci doit quand même croiser des malus.
+    expect(plateauxSansMalusSurLeCircuit).toBe(0);
   });
 
   it("change de forme d'une graine à l'autre", () => {

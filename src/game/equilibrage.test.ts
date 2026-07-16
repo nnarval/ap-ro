@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { REGLAGES } from "./config";
-import { creerPartie, pionActif, reduire, type DefinitionPion } from "./partie";
+import { creerPartie, pionActif, pionsSurCaseActive, reduire, type DefinitionPion } from "./partie";
 import { creerRng } from "./rng";
-import type { EtatPartie } from "./types";
+import type { EtatPartie, Phase } from "./types";
 
 const PIONS: DefinitionPion[] = [
   { nom: "A", membres: ["a"] },
@@ -34,6 +34,11 @@ function unPas(etat: EtatPartie, rng: Rng): EtatPartie {
       return reduire(etat, { type: "AVANCER" });
     case "croisement":
       return reduire(etat, { type: "CHOISIR_CHEMIN", caseId: rng.element(etat.choix) });
+    case "defiInstantane":
+      return reduire(etat, {
+        type: "RESOUDRE_DEFI_INSTANTANE",
+        vainqueurId: rng.element(pionsSurCaseActive(etat)).id,
+      });
     case "resolution":
       return reduire(etat, { type: "RESOUDRE_CASE" });
     case "choixMalus":
@@ -64,15 +69,21 @@ function unPas(etat: EtatPartie, rng: Rng): EtatPartie {
   }
 }
 
-function jouer(graine: number, arret: (e: EtatPartie) => boolean): EtatPartie {
+function jouer(
+  graine: number,
+  arret: (e: EtatPartie) => boolean,
+  phasesVues?: Set<Phase>,
+): EtatPartie {
   const rng: Rng = creerRng((graine ^ 0x5f3759df) >>> 0);
   let etat = creerPartie(graine, PIONS);
   let garde = 0;
 
   while (!arret(etat)) {
     if (garde++ > 2_000_000) throw new Error(`Boucle infinie, graine ${graine}`);
+    phasesVues?.add(etat.phase);
     etat = unPas(etat, rng);
   }
+  phasesVues?.add(etat.phase);
   return etat;
 }
 
@@ -100,6 +111,34 @@ describe("équilibrage", () => {
       expect(etat.phase, `graine ${graine}`).toBe("terminee");
       expect(somme(etat.pions.map((p) => p.etoiles))).toBe(REGLAGES.etoilesParPartie);
     }
+  });
+
+  /**
+   * Une phase qu'aucune partie n'atteint, c'est du contenu que personne ne
+   * verra jamais — et ça n'a rien de théorique : les malus ont déjà été,
+   * pendant un temps, tous relégués sur les raccourcis.
+   */
+  it("fait passer les parties par toutes les phases du jeu", () => {
+    const vues = new Set<Phase>();
+    for (const graine of graines) {
+      jouer(graine, (e) => e.phase === "terminee", vues);
+    }
+
+    const attendues: Phase[] = [
+      "lancer",
+      "deplacement",
+      "croisement",
+      "defiInstantane",
+      "resolution",
+      "choixMalus",
+      "boutique",
+      "choixAdversaire",
+      "defiDuel",
+      "finTour",
+      "defiCollectif",
+      "terminee",
+    ];
+    expect([...attendues].filter((p) => !vues.has(p))).toEqual([]);
   });
 
   it("distribue le gros des étoiles dans le temps imparti", () => {

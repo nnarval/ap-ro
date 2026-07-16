@@ -1,14 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { CarteAnnonce } from "@/components/CarteAnnonce";
 import { De } from "@/components/De";
 import { PlateauView } from "@/components/PlateauView";
 import { REGLAGES } from "@/game/config";
-import { classement, creerPartie, pionActif, reduire, type DefinitionPion } from "@/game/partie";
+import { defiParId } from "@/game/defis";
+import {
+  classement,
+  creerPartie,
+  pionActif,
+  pionsSurCaseActive,
+  reduire,
+  type DefinitionPion,
+} from "@/game/partie";
 import { graineAleatoire } from "@/game/rng";
 import type { Action, EtatPartie, Pion } from "@/game/types";
 
-/** Pions de test, en attendant l'écran de configuration et le lobby multi. */
+/** Pions de test, en attendant l'écran d'accueil et le lobby. */
 const PIONS_DEMO: DefinitionPion[] = [
   { nom: "Les Rouges", membres: ["Alice", "Bob"] },
   { nom: "Les Bleus", membres: ["Chloé", "David"] },
@@ -33,7 +42,7 @@ function Bouton({
   disabled?: boolean;
 }) {
   const base =
-    "flex-1 rounded-xl py-3.5 text-center font-semibold transition active:scale-[0.98] disabled:opacity-40";
+    "w-full rounded-xl py-3.5 text-center font-semibold transition active:scale-[0.98] disabled:opacity-40";
   if (variante === "discret") {
     return (
       <button onClick={onClick} disabled={disabled} className={`${base} bg-slate-800 text-slate-200`}>
@@ -53,25 +62,20 @@ function Bouton({
   );
 }
 
-/** Rangée de pions à désigner (adversaire, vainqueur…). */
-function ChoixPion({
+function GrillePions({
   pions,
   onChoisir,
-  exclure,
 }: {
   pions: Pion[];
   onChoisir: (id: string) => void;
-  exclure?: string;
 }) {
   return (
     <div className="grid grid-cols-2 gap-2">
-      {pions
-        .filter((p) => p.id !== exclure)
-        .map((p) => (
-          <Bouton key={p.id} onClick={() => onChoisir(p.id)} couleur={p.couleur}>
-            {p.nom}
-          </Bouton>
-        ))}
+      {pions.map((p) => (
+        <Bouton key={p.id} onClick={() => onChoisir(p.id)} couleur={p.couleur}>
+          {p.nom}
+        </Bouton>
+      ))}
     </div>
   );
 }
@@ -118,7 +122,153 @@ export default function Page() {
 
   const actif = pionActif(etat);
   const adversaire = etat.pions.find((p) => p.id === etat.adversaireId);
+  const defi = etat.defiId ? defiParId(etat.defiId) : null;
   const montreDe = etat.phase === "lancer" || etat.phase === "deplacement";
+  // Rejoue l'animation à chaque nouvelle annonce plutôt qu'à chaque rendu.
+  const cleCarte = `${etat.phase}-${etat.manche}-${etat.indexTour}-${etat.defiId}`;
+
+  function carte() {
+    switch (etat!.phase) {
+      case "defiInstantane": {
+        const participants = pionsSurCaseActive(etat!);
+        return (
+          <CarteAnnonce
+            key={cleCarte}
+            couleur="#f43f5e"
+            icone="⚡"
+            surtitre="Duel éclair"
+            titre={defi?.titre ?? "Défi"}
+            consigne={defi?.consigne}
+          >
+            <p className="text-xs text-slate-400">
+              Qui a gagné ? Les autres boivent {REGLAGES.gorgeesPerdantInstantane} gorgées.
+            </p>
+            <GrillePions
+              pions={participants}
+              onChoisir={(vainqueurId) =>
+                envoyer({ type: "RESOUDRE_DEFI_INSTANTANE", vainqueurId })
+              }
+            />
+          </CarteAnnonce>
+        );
+      }
+
+      case "choixMalus":
+        return (
+          <CarteAnnonce
+            key={cleCarte}
+            couleur="#ef4444"
+            icone="💀"
+            surtitre="Malus"
+            titre={`${actif.nom}, tu choisis`}
+            consigne="Les pièces ou l'honneur."
+          >
+            <Bouton onClick={() => envoyer({ type: "CHOISIR_MALUS", gage: false })} couleur="#ef4444">
+              −{REGLAGES.perteMalus} pièces
+            </Bouton>
+            <Bouton onClick={() => envoyer({ type: "CHOISIR_MALUS", gage: true })} variante="discret">
+              Plutôt un gage
+            </Bouton>
+          </CarteAnnonce>
+        );
+
+      case "choixAdversaire":
+        return (
+          <CarteAnnonce
+            key={cleCarte}
+            couleur="#a855f7"
+            icone="⚔️"
+            surtitre="Case défi"
+            titre={`${actif.nom} choisit sa victime`}
+            consigne="Le défi ne sera révélé qu'après."
+          >
+            <GrillePions
+              pions={etat!.pions.filter((p) => p.id !== actif.id)}
+              onChoisir={(pionId) => envoyer({ type: "CHOISIR_ADVERSAIRE", pionId })}
+            />
+          </CarteAnnonce>
+        );
+
+      case "defiDuel":
+        if (!adversaire) return null;
+        return (
+          <CarteAnnonce
+            key={cleCarte}
+            couleur="#a855f7"
+            icone="⚔️"
+            surtitre={`${actif.nom} contre ${adversaire.nom}`}
+            titre={defi?.titre ?? "Duel"}
+            consigne={defi?.consigne}
+          >
+            <p className="text-xs text-slate-400">
+              Qui gagne ? +{REGLAGES.gainDefiDuel} pièces pour le vainqueur.
+            </p>
+            <GrillePions
+              pions={[actif, adversaire]}
+              onChoisir={(vainqueurId) => envoyer({ type: "RESOUDRE_DEFI", vainqueurId })}
+            />
+          </CarteAnnonce>
+        );
+
+      case "defiCollectif":
+        return (
+          <CarteAnnonce
+            key={cleCarte}
+            couleur="#facc15"
+            icone="🏆"
+            surtitre={`Fin de la manche ${etat!.manche}`}
+            titre={defi?.titre ?? "Défi collectif"}
+            consigne={defi?.consigne}
+          >
+            <p className="text-xs text-slate-400">
+              Tout le monde joue. Le gagnant prend une étoile ⭐
+            </p>
+            <GrillePions
+              pions={etat!.pions}
+              onChoisir={(vainqueurId) => envoyer({ type: "RESOUDRE_DEFI_COLLECTIF", vainqueurId })}
+            />
+          </CarteAnnonce>
+        );
+
+      case "boutique":
+        return (
+          <CarteAnnonce
+            key={cleCarte}
+            couleur="#f59e0b"
+            icone="🛒"
+            surtitre="Boutique"
+            titre={`${actif.pieces} 🪙 en poche`}
+            consigne="Une étoile, ou de quoi faire boire les autres."
+          >
+            <Bouton
+              onClick={() => envoyer({ type: "ACHETER_ETOILE" })}
+              couleur="#facc15"
+              disabled={actif.pieces < REGLAGES.prixEtoileBoutique}
+            >
+              ⭐ Une étoile — {REGLAGES.prixEtoileBoutique} 🪙
+            </Bouton>
+            <div className="flex gap-2">
+              {[1, 3, 5].map((n) => (
+                <Bouton
+                  key={n}
+                  onClick={() => envoyer({ type: "ACHETER_GORGEES", nombre: n })}
+                  variante="discret"
+                  disabled={actif.pieces < n * REGLAGES.prixGorgee}
+                >
+                  🍺 {n}
+                </Bouton>
+              ))}
+            </div>
+            <Bouton onClick={() => envoyer({ type: "QUITTER_BOUTIQUE" })} variante="discret">
+              Quitter
+            </Bouton>
+          </CarteAnnonce>
+        );
+
+      default:
+        return null;
+    }
+  }
 
   return (
     <main className="flex h-dvh flex-col bg-slate-900">
@@ -198,89 +348,6 @@ export default function Page() {
           </p>
         )}
 
-        {etat.phase === "choixMalus" && (
-          <div className="flex gap-2">
-            <Bouton onClick={() => envoyer({ type: "CHOISIR_MALUS", gage: false })} couleur="#ef4444">
-              −{REGLAGES.perteMalus} pièces
-            </Bouton>
-            <Bouton onClick={() => envoyer({ type: "CHOISIR_MALUS", gage: true })} variante="discret">
-              Plutôt un gage
-            </Bouton>
-          </div>
-        )}
-
-        {etat.phase === "boutique" && (
-          <div className="space-y-2">
-            <Bouton
-              onClick={() => envoyer({ type: "ACHETER_ETOILE" })}
-              couleur="#facc15"
-              disabled={actif.pieces < REGLAGES.prixEtoileBoutique}
-            >
-              ⭐ Acheter une étoile — {REGLAGES.prixEtoileBoutique} 🪙
-            </Bouton>
-            <div className="flex gap-2">
-              {[1, 3, 5].map((n) => (
-                <Bouton
-                  key={n}
-                  onClick={() => envoyer({ type: "ACHETER_GORGEES", nombre: n })}
-                  variante="discret"
-                  disabled={actif.pieces < n * REGLAGES.prixGorgee}
-                >
-                  🍺 {n} gorgée{n > 1 ? "s" : ""}
-                </Bouton>
-              ))}
-            </div>
-            <Bouton onClick={() => envoyer({ type: "QUITTER_BOUTIQUE" })} variante="discret">
-              Quitter la boutique
-            </Bouton>
-          </div>
-        )}
-
-        {etat.phase === "choixAdversaire" && (
-          <div className="space-y-2">
-            <p className="text-center text-sm font-semibold text-purple-300">
-              ⚔️ {actif.nom} choisit qui défier
-            </p>
-            <ChoixPion
-              pions={etat.pions}
-              exclure={actif.id}
-              onChoisir={(pionId) => envoyer({ type: "CHOISIR_ADVERSAIRE", pionId })}
-            />
-          </div>
-        )}
-
-        {etat.phase === "defiDuel" && adversaire && (
-          <div className="space-y-2">
-            <p className="text-center text-sm text-slate-300">
-              <span style={{ color: actif.couleur }}>{actif.nom}</span> contre{" "}
-              <span style={{ color: adversaire.couleur }}>{adversaire.nom}</span> — qui gagne ?
-            </p>
-            <div className="flex gap-2">
-              {[actif, adversaire].map((p) => (
-                <Bouton
-                  key={p.id}
-                  onClick={() => envoyer({ type: "RESOUDRE_DEFI", vainqueurId: p.id })}
-                  couleur={p.couleur}
-                >
-                  {p.nom}
-                </Bouton>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {etat.phase === "defiCollectif" && (
-          <div className="space-y-2">
-            <p className="text-center text-sm font-semibold text-amber-300">
-              Défi de fin de manche — le gagnant prend une étoile
-            </p>
-            <ChoixPion
-              pions={etat.pions}
-              onChoisir={(vainqueurId) => envoyer({ type: "RESOUDRE_DEFI_COLLECTIF", vainqueurId })}
-            />
-          </div>
-        )}
-
         {etat.phase === "finTour" && (
           <>
             {actif.gorgees > 0 && (
@@ -292,11 +359,7 @@ export default function Page() {
                     <button
                       key={p.id}
                       onClick={() =>
-                        envoyer({
-                          type: "DONNER_GORGEE",
-                          donneurId: actif.id,
-                          receveurId: p.id,
-                        })
+                        envoyer({ type: "DONNER_GORGEE", donneurId: actif.id, receveurId: p.id })
                       }
                       className="rounded-full px-2 py-0.5 text-[11px] font-medium text-slate-950"
                       style={{ backgroundColor: p.couleur }}
@@ -327,6 +390,8 @@ export default function Page() {
           </div>
         )}
       </footer>
+
+      {carte()}
     </main>
   );
 }

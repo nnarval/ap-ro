@@ -1,3 +1,7 @@
+import type { ModeJeu } from "./defis";
+
+export type { ModeJeu };
+
 /** Les six types de cases, plus le départ, qui est structurel. */
 export type TypeCase =
   | "depart"
@@ -49,6 +53,8 @@ export type Phase =
   | "lancer"
   | "deplacement"
   | "croisement"
+  /** Deux pions sur la même case : geste idiot, le perdant boit. */
+  | "defiInstantane"
   | "resolution"
   | "choixMalus"
   | "boutique"
@@ -71,6 +77,8 @@ export interface EtatPartie {
   indexTour: number;
   manche: number;
   phase: Phase;
+  /** Détermine quels défis sont jouables. */
+  mode: ModeJeu;
 
   de: number | null;
   pasRestants: number;
@@ -78,6 +86,9 @@ export interface EtatPartie {
   choix: string[];
   /** En phase "defiDuel", le pion défié par le pion actif. */
   adversaireId: string | null;
+  /** Défi en cours. On ne garde que l'id : le catalogue étant dans le code,
+   *  ça suffit à ce que tous les téléphones affichent le même. */
+  defiId: string | null;
 
   /** Cases portant une étoile en ce moment. */
   etoilesSur: string[];
@@ -100,6 +111,7 @@ export type Action =
   | { type: "QUITTER_BOUTIQUE" }
   | { type: "CHOISIR_ADVERSAIRE"; pionId: string }
   | { type: "RESOUDRE_DEFI"; vainqueurId: string }
+  | { type: "RESOUDRE_DEFI_INSTANTANE"; vainqueurId: string }
   | { type: "DONNER_GORGEE"; donneurId: string; receveurId: string }
   | { type: "FIN_TOUR" }
   | { type: "RESOUDRE_DEFI_COLLECTIF"; vainqueurId: string };

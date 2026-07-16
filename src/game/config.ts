@@ -47,6 +47,11 @@ export const REGLAGES = {
   /** Provisoire, en attendant le contenu des défis. */
   gainDefiDuel: 5,
 
+  /** Gorgées bues par le perdant du défi instantané, quand deux pions se
+   *  retrouvent sur la même case. Ce n'est pas de l'état de jeu : on l'affiche,
+   *  les joueurs boivent. */
+  gorgeesPerdantInstantane: 5,
+
   gainTourComplet: 4,
 } as const;
 

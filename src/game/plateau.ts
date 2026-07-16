@@ -167,10 +167,16 @@ export function genererPlateau(graine: number): Plateau {
   const majoritaires = repartir(restant.length - nbEvenement - nbBoutique, PARTS_MAJORITAIRES);
 
   // Le raccourci doit se payer : plus court ET sans risque, ce serait toujours
-  // le bon choix. On y envoie les malus en priorité.
+  // le bon choix. On y concentre donc des malus — mais seulement la moitié du
+  // budget. Les y envoyer tous les épuiserait : le circuit principal se
+  // retrouverait sans un seul malus, et qui ne prend jamais de raccourci n'en
+  // rencontrerait jamais.
+  const idsRaccourcis = restant.filter((id) => id.startsWith("r"));
+  const idsCircuit = restant.filter((id) => !id.startsWith("r"));
   const parPrioriteMalus = [
-    ...restant.filter((id) => id.startsWith("r")),
-    ...restant.filter((id) => !id.startsWith("r")),
+    ...idsRaccourcis.slice(0, Math.min(Math.ceil(majoritaires.malus / 2), idsRaccourcis.length)),
+    ...idsCircuit,
+    ...idsRaccourcis,
   ];
 
   const poser = (id: string, type: TypeCase) => {
@@ -180,6 +186,9 @@ export function genererPlateau(graine: number): Plateau {
 
   for (const id of parPrioriteMalus) {
     if (majoritaires.malus === 0) break;
+    // La liste cite les raccourcis deux fois (priorité, puis repli) : sans
+    // cette garde, une même case consommerait deux fois le budget.
+    if (assignees.has(id)) continue;
     poser(id, "malus");
     majoritaires.malus--;
   }

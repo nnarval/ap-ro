@@ -8,3 +8,59 @@ body {
   color: #f8fafc;
   -webkit-tap-highlight-color: transparent;
 }
+
+@keyframes voile-entree {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* La carte arrive en dépassant légèrement sa taille finale : c'est ce petit
+   rebond qui la fait claquer plutôt qu'apparaître. */
+@keyframes carte-entree {
+  from {
+    opacity: 0;
+    transform: scale(0.72) translateY(26px) rotate(-3deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0) rotate(0deg);
+  }
+}
+
+@keyframes carte-contenu {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Halo qui pulse derrière l'icône. */
+@keyframes halo {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 0.1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

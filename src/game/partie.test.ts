@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { REGLAGES } from "./config";
-import { creerPartie, reduire, type DefinitionPion } from "./partie";
+import { defiParId } from "./defis";
+import { creerPartie, pionsSurCaseActive, reduire, type DefinitionPion } from "./partie";
 import type { EtatPartie } from "./types";
 
 const PIONS: DefinitionPion[] = [
@@ -51,6 +52,85 @@ describe("creerPartie", () => {
       const etat = creerPartie(graine, PIONS);
       expect(etoilesSousUnPion(etat), `graine ${graine}`).toEqual([]);
     }
+  });
+});
+
+describe("duel éclair", () => {
+  /**
+   * Place le pion actif juste avant `cible`, prêt à y poser le pied.
+   * On évite les croisements : le réducteur y demanderait un choix de chemin
+   * au lieu d'avancer.
+   */
+  function preparerArrivee(etat: EtatPartie): { etat: EtatPartie; cible: string } | null {
+    const depuis = Object.values(etat.plateau.cases).find(
+      (c) => c.suivantes.length === 1 && c.suivantes[0] !== etat.plateau.depart,
+    );
+    if (!depuis) return null;
+    const cible = depuis.suivantes[0];
+    return {
+      etat: {
+        ...etat,
+        pions: etat.pions.map((p, i) => (i === 0 ? { ...p, caseId: depuis.id } : p)),
+        phase: "deplacement",
+        pasRestants: 1,
+      },
+      cible,
+    };
+  }
+
+  it("se déclenche quand un pion en rejoint un autre, et tire un défi instantané", () => {
+    for (const graine of graines.slice(0, 60)) {
+      const prep = preparerArrivee(creerPartie(graine, PIONS));
+      if (!prep) continue;
+
+      // On poste un adversaire sur la case d'arrivée.
+      const avecOccupant: EtatPartie = {
+        ...prep.etat,
+        pions: prep.etat.pions.map((p, i) => (i === 1 ? { ...p, caseId: prep.cible } : p)),
+      };
+      const apres = reduire(avecOccupant, { type: "AVANCER" });
+
+      expect(apres.phase, `graine ${graine}`).toBe("defiInstantane");
+      expect(defiParId(apres.defiId!)?.categorie, `graine ${graine}`).toBe("instantane");
+      expect(pionsSurCaseActive(apres).map((p) => p.id).sort()).toEqual(["p0", "p1"]);
+    }
+  });
+
+  it("ne se déclenche pas quand la case est libre", () => {
+    for (const graine of graines.slice(0, 60)) {
+      const prep = preparerArrivee(creerPartie(graine, PIONS));
+      if (!prep) continue;
+      // Les autres pions sont au départ, la cible n'est pas le départ.
+      const apres = reduire(prep.etat, { type: "AVANCER" });
+      expect(apres.phase, `graine ${graine}`).toBe("resolution");
+      expect(apres.defiId).toBeNull();
+    }
+  });
+
+  it("rend la main à la case une fois le vainqueur désigné", () => {
+    const prep = preparerArrivee(creerPartie(graines[0], PIONS))!;
+    const avecOccupant: EtatPartie = {
+      ...prep.etat,
+      pions: prep.etat.pions.map((p, i) => (i === 1 ? { ...p, caseId: prep.cible } : p)),
+    };
+    const duel = reduire(avecOccupant, { type: "AVANCER" });
+    const apres = reduire(duel, { type: "RESOUDRE_DEFI_INSTANTANE", vainqueurId: "p1" });
+
+    // La case doit encore produire son effet : le duel s'intercale, il ne
+    // remplace pas la résolution.
+    expect(apres.phase).toBe("resolution");
+    expect(apres.defiId).toBeNull();
+    expect(apres.journal.at(-1)?.texte).toContain(`${REGLAGES.gorgeesPerdantInstantane} gorgées`);
+  });
+
+  it("refuse un vainqueur qui ne participe pas au duel", () => {
+    const prep = preparerArrivee(creerPartie(graines[0], PIONS))!;
+    const avecOccupant: EtatPartie = {
+      ...prep.etat,
+      pions: prep.etat.pions.map((p, i) => (i === 1 ? { ...p, caseId: prep.cible } : p)),
+    };
+    const duel = reduire(avecOccupant, { type: "AVANCER" });
+    expect(reduire(duel, { type: "RESOUDRE_DEFI_INSTANTANE", vainqueurId: "p2" })).toBe(duel);
   });
 });
 
