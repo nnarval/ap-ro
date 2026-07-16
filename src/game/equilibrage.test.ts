@@ -31,7 +31,7 @@ function unPas(etat: EtatPartie, rng: Rng): EtatPartie {
     case "lancer":
       return reduire(etat, { type: "LANCER_DE" });
     case "deplacement":
-      return reduire(etat, { type: "AVANCER" });
+      return reduire(etat, { type: "AVANCER", pasRestants: etat.pasRestants });
     case "croisement":
       return reduire(etat, { type: "CHOISIR_CHEMIN", caseId: rng.element(etat.choix) });
     case "defiInstantane":

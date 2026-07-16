@@ -88,7 +88,7 @@ describe("duel éclair", () => {
         ...prep.etat,
         pions: prep.etat.pions.map((p, i) => (i === 1 ? { ...p, caseId: prep.cible } : p)),
       };
-      const apres = reduire(avecOccupant, { type: "AVANCER" });
+      const apres = reduire(avecOccupant, { type: "AVANCER", pasRestants: 1 });
 
       expect(apres.phase, `graine ${graine}`).toBe("defiInstantane");
       expect(defiParId(apres.defiId!)?.categorie, `graine ${graine}`).toBe("instantane");
@@ -101,7 +101,7 @@ describe("duel éclair", () => {
       const prep = preparerArrivee(creerPartie(graine, PIONS));
       if (!prep) continue;
       // Les autres pions sont au départ, la cible n'est pas le départ.
-      const apres = reduire(prep.etat, { type: "AVANCER" });
+      const apres = reduire(prep.etat, { type: "AVANCER", pasRestants: 1 });
       expect(apres.phase, `graine ${graine}`).toBe("resolution");
       expect(apres.defiId).toBeNull();
     }
@@ -113,7 +113,7 @@ describe("duel éclair", () => {
       ...prep.etat,
       pions: prep.etat.pions.map((p, i) => (i === 1 ? { ...p, caseId: prep.cible } : p)),
     };
-    const duel = reduire(avecOccupant, { type: "AVANCER" });
+    const duel = reduire(avecOccupant, { type: "AVANCER", pasRestants: 1 });
     const apres = reduire(duel, { type: "RESOUDRE_DEFI_INSTANTANE", vainqueurId: "p1" });
 
     // La case doit encore produire son effet : le duel s'intercale, il ne
@@ -123,13 +123,34 @@ describe("duel éclair", () => {
     expect(apres.journal.at(-1)?.texte).toContain(`${REGLAGES.gorgeesPerdantInstantane} gorgées`);
   });
 
+  it("ignore un second « avance » venu d'un autre téléphone", () => {
+    // En multi, tous les téléphones enchaînent le déplacement par minuterie.
+    // Sans garde, le pion sauterait autant de cases qu'il y a d'appareils.
+    const etat = creerPartie(graines[0], PIONS);
+    const depuis = Object.values(etat.plateau.cases).find((c) => c.suivantes.length === 1)!;
+    const enRoute: EtatPartie = {
+      ...etat,
+      pions: etat.pions.map((p, i) => (i === 0 ? { ...p, caseId: depuis.id } : p)),
+      phase: "deplacement",
+      pasRestants: 3,
+    };
+
+    const unPas = reduire(enRoute, { type: "AVANCER", pasRestants: 3 });
+    expect(unPas.pasRestants).toBe(2);
+
+    // Le doublon part du même compteur périmé : il ne doit rien faire.
+    expect(reduire(unPas, { type: "AVANCER", pasRestants: 3 })).toBe(unPas);
+    // Alors que le pas suivant, lui, passe.
+    expect(reduire(unPas, { type: "AVANCER", pasRestants: 2 }).pasRestants).toBe(1);
+  });
+
   it("refuse un vainqueur qui ne participe pas au duel", () => {
     const prep = preparerArrivee(creerPartie(graines[0], PIONS))!;
     const avecOccupant: EtatPartie = {
       ...prep.etat,
       pions: prep.etat.pions.map((p, i) => (i === 1 ? { ...p, caseId: prep.cible } : p)),
     };
-    const duel = reduire(avecOccupant, { type: "AVANCER" });
+    const duel = reduire(avecOccupant, { type: "AVANCER", pasRestants: 1 });
     expect(reduire(duel, { type: "RESOUDRE_DEFI_INSTANTANE", vainqueurId: "p2" })).toBe(duel);
   });
 });

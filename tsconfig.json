@@ -17,5 +17,7 @@
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  // `worker/` a son propre tsconfig : ses types Cloudflare et la lib DOM du
+  // front ne peuvent pas cohabiter dans le même programme.
+  "exclude": ["node_modules", "worker"]
 }

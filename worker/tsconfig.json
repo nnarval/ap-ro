@@ -1,0 +1,20 @@
+{
+  // Le Worker tourne sur le runtime Cloudflare, pas dans un navigateur : il lui
+  // faut ses propres types, incompatibles avec la lib DOM du front.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": ["@cloudflare/workers-types"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "noEmit": true
+  },
+  // Le moteur et le protocole, rien d'autre : le reste de `src/` est du code
+  // client, qui suppose un navigateur et les types Node de Next.
+  "include": ["**/*.ts", "../src/game/**/*.ts", "../src/multi/protocole.ts"],
+  "exclude": ["../src/game/**/*.test.ts"]
+}

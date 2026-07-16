@@ -102,7 +102,12 @@ export interface EtatPartie {
 
 export type Action =
   | { type: "LANCER_DE" }
-  | { type: "AVANCER" }
+  /**
+   * `pasRestants` est le compteur dont l'émetteur croit partir. En multi, tous
+   * les téléphones enchaînent le déplacement par minuterie : sans cette garde,
+   * six « avance d'une case » simultanés feraient sauter six cases.
+   */
+  | { type: "AVANCER"; pasRestants: number }
   | { type: "CHOISIR_CHEMIN"; caseId: string }
   | { type: "RESOUDRE_CASE" }
   | { type: "CHOISIR_MALUS"; gage: boolean }

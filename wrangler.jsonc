@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "apero-party",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-07-01",
+  "durable_objects": {
+    "bindings": [{ "name": "Partie", "class_name": "Partie" }]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      // SQLite : c'est le seul moteur de Durable Objects offert par le plan
+      // gratuit de Cloudflare.
+      "new_sqlite_classes": ["Partie"]
+    }
+  ],
+  "observability": { "enabled": true }
+}

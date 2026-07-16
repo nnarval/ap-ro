@@ -13,6 +13,16 @@ export const COULEURS_PIONS = [
   "#f97316",
 ] as const;
 
+/** Nommées d'après leur couleur : à l'apéro, personne ne retient « équipe 3 ». */
+export const NOMS_EQUIPES = [
+  "Les Rouges",
+  "Les Bleus",
+  "Les Verts",
+  "Les Jaunes",
+  "Les Violets",
+  "Les Oranges",
+] as const;
+
 export interface DefinitionPion {
   nom: string;
   membres: string[];
@@ -238,6 +248,9 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
 
     case "AVANCER": {
       if (etat.phase !== "deplacement" || etat.pasRestants <= 0) return etat;
+      // Le pas a déjà été fait par le message d'un autre téléphone : on ignore
+      // le doublon plutôt que d'avancer une seconde fois.
+      if (action.pasRestants !== etat.pasRestants) return etat;
       const courante = etat.plateau.cases[pionActif(etat).caseId];
       if (courante.suivantes.length > 1) {
         return { ...etat, phase: "croisement", choix: courante.suivantes };
