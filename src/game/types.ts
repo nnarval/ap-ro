@@ -77,9 +77,10 @@ export interface EtatPartie {
   /** En phase "croisement", les cases entre lesquelles choisir. */
   choix: string[];
 
-  /** Case où se trouve l'étoile actuellement. */
-  etoileSur: string | null;
+  /** Cases portant une étoile en ce moment. */
+  etoilesSur: string[];
   prixEtoile: number;
+  /** Étoiles qu'il reste à distribuer d'ici la fin de la partie. */
   etoilesRestantes: number;
 
   /** État du RNG. Fait partie de l'état : la partie est rejouable à l'identique. */

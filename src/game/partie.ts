@@ -38,8 +38,16 @@ export function creerPartie(graine: number, definitions: DefinitionPion[]): Etat
   // Décalé par rapport à la graine du plateau, sinon les premiers jets de dé
   // seraient corrélés à la forme du circuit.
   let rng = (graine ^ 0x9e3779b9) >>> 0;
-  const [indexEtoile, rngApres] = tirerEntier(rng, 0, plateau.emplacementsEtoile.length - 1);
-  rng = rngApres;
+
+  const etoilesSur: string[] = [];
+  const nbInitiales = Math.min(REGLAGES.etoilesSurPlateau, REGLAGES.etoilesParPartie);
+  while (etoilesSur.length < nbInitiales) {
+    const libres = plateau.emplacementsEtoile.filter((id) => !etoilesSur.includes(id));
+    if (libres.length === 0) break;
+    const [i, suivant] = tirerEntier(rng, 0, libres.length - 1);
+    rng = suivant;
+    etoilesSur.push(libres[i]);
+  }
 
   return {
     plateau,
@@ -51,7 +59,7 @@ export function creerPartie(graine: number, definitions: DefinitionPion[]): Etat
     de: null,
     pasRestants: 0,
     choix: [],
-    etoileSur: plateau.emplacementsEtoile[indexEtoile],
+    etoilesSur,
     prixEtoile: REGLAGES.prixEtoile,
     etoilesRestantes: REGLAGES.etoilesParPartie,
     rng,
@@ -94,12 +102,31 @@ function avancerSur(etat: EtatPartie, caseId: string): EtatPartie {
   };
 }
 
-/** Déplace l'étoile sur un autre emplacement, à la façon de Mario Party. */
-function deplacerEtoile(etat: EtatPartie): { etoileSur: string; rng: number } {
-  const candidats = etat.plateau.emplacementsEtoile.filter((id) => id !== etat.etoileSur);
-  if (candidats.length === 0) return { etoileSur: etat.etoileSur!, rng: etat.rng };
-  const [i, rng] = tirerEntier(etat.rng, 0, candidats.length - 1);
-  return { etoileSur: candidats[i], rng };
+/**
+ * Tire un emplacement pour une étoile qui réapparaît.
+ *
+ * On écarte les emplacements déjà occupés par une autre étoile, et surtout ceux
+ * où un pion se trouve : sinon l'étoile retomberait sous les pieds de quelqu'un
+ * — à commencer par celui qui vient de la ramasser — et il l'encaisserait au
+ * tour suivant sans avoir rien fait.
+ */
+function tirerEmplacementEtoile(
+  plateau: EtatPartie["plateau"],
+  pions: readonly Pion[],
+  dejaPrises: readonly string[],
+  rng: number,
+): [emplacement: string | null, rng: number] {
+  const occupees = new Set(pions.map((p) => p.caseId));
+  const libres = plateau.emplacementsEtoile.filter((id) => !dejaPrises.includes(id));
+  const candidats = libres.filter((id) => !occupees.has(id));
+
+  // Repli : si tous les emplacements libres ont un pion dessus, mieux vaut une
+  // étoile mal placée qu'un plateau qui n'en a plus.
+  const liste = candidats.length > 0 ? candidats : libres;
+  if (liste.length === 0) return [null, rng];
+
+  const [i, suivant] = tirerEntier(rng, 0, liste.length - 1);
+  return [liste[i], suivant];
 }
 
 /**
@@ -172,11 +199,11 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
           };
 
         case "etoile": {
-          if (etat.etoileSur !== caseCourante.id) {
+          if (!etat.etoilesSur.includes(caseCourante.id)) {
             return {
               ...etat,
               phase: "finTour",
-              journal: noter(etat, "emplacement d'étoile, mais l'étoile est ailleurs"),
+              journal: noter(etat, "emplacement d'étoile, mais elle est ailleurs"),
             };
           }
           if (pion.pieces < etat.prixEtoile) {
@@ -210,21 +237,37 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
 
       const pion = pionActif(etat);
       const etoilesRestantes = etat.etoilesRestantes - 1;
-      const { etoileSur, rng } = deplacerEtoile(etat);
-      const journal = noter(etat, `achète une étoile pour ${etat.prixEtoile} pièces`);
+      const pions = majPionActif(etat, {
+        pieces: pion.pieces - etat.prixEtoile,
+        etoiles: pion.etoiles + 1,
+      });
+
+      // L'étoile ramassée quitte le plateau, puis on regarnit jusqu'au nombre
+      // voulu — sans jamais dépasser ce qu'il reste à distribuer.
+      let etoilesSur = etat.etoilesSur.filter((id) => id !== pion.caseId);
+      let rng = etat.rng;
+      const cible = Math.min(REGLAGES.etoilesSurPlateau, etoilesRestantes);
+      while (etoilesSur.length < cible) {
+        const [emplacement, suivant] = tirerEmplacementEtoile(
+          etat.plateau,
+          pions,
+          etoilesSur,
+          rng,
+        );
+        rng = suivant;
+        if (!emplacement) break;
+        etoilesSur = [...etoilesSur, emplacement];
+      }
 
       return {
         ...etat,
-        pions: majPionActif(etat, {
-          pieces: pion.pieces - etat.prixEtoile,
-          etoiles: pion.etoiles + 1,
-        }),
+        pions,
         etoilesRestantes,
-        etoileSur: etoilesRestantes > 0 ? etoileSur : null,
+        etoilesSur: etoilesRestantes > 0 ? etoilesSur : [],
         prixEtoile: etat.prixEtoile + REGLAGES.inflationEtoile,
         rng,
         phase: etoilesRestantes > 0 ? "finTour" : "terminee",
-        journal,
+        journal: noter(etat, `achète une étoile pour ${etat.prixEtoile} pièces`),
       };
     }
 

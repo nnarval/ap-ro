@@ -11,6 +11,10 @@ export const REGLAGES = {
   /** Nombre d'étoiles à distribuer avant la fin de la partie. */
   etoilesParPartie: 10,
 
+  /** Étoiles présentes sur le plateau en même temps. Dès qu'une est ramassée,
+   *  elle réapparaît ailleurs pour maintenir ce nombre. */
+  etoilesSurPlateau: 2,
+
   /** Prix de l'étoile, en pièces. */
   prixEtoile: 7,
   /** Le prix monte de ce montant à chaque étoile achetée (0 = prix fixe). */
@@ -32,9 +36,11 @@ export const REGLAGES = {
   raccourcisMin: 1,
   raccourcisMax: 2,
 
-  /** Emplacements où l'étoile peut apparaître. Elle se déplace après chaque achat. */
-  emplacementsEtoileMin: 5,
-  emplacementsEtoileMax: 7,
+  /** Emplacements où les étoiles peuvent apparaître. Il en faut nettement plus
+   *  que d'étoiles simultanées, sinon une étoile ramassée n'a nulle part où
+   *  réapparaître une fois écartés les emplacements occupés. */
+  emplacementsEtoileMin: 6,
+  emplacementsEtoileMax: 8,
 
   /** Pièces distribuées au départ. */
   piecesDepart: 5,

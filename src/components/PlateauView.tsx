@@ -35,7 +35,8 @@ export interface PlateauViewProps {
   plateau: Plateau;
   pions: Pion[];
   pionActifId: string;
-  etoileSur: string | null;
+  /** Cases portant une étoile. */
+  etoilesSur: string[];
   /** Cases proposées au croisement. Cliquables. */
   choix: string[];
   onChoisir?: (caseId: string) => void;
@@ -47,7 +48,7 @@ export function PlateauView({
   plateau,
   pions,
   pionActifId,
-  etoileSur,
+  etoilesSur,
   choix,
   onChoisir,
   suivrePionActif,
@@ -143,7 +144,7 @@ export function PlateauView({
 
         {Object.values(plateau.cases).map((c) => {
           const proposee = choix.includes(c.id);
-          const porteEtoile = etoileSur === c.id;
+          const porteEtoile = etoilesSur.includes(c.id);
           return (
             <g
               key={c.id}

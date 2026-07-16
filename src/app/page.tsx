@@ -82,7 +82,7 @@ export default function Page() {
           plateau={etat.plateau}
           pions={etat.pions}
           pionActifId={actif.id}
-          etoileSur={etat.etoileSur}
+          etoilesSur={etat.etoilesSur}
           choix={etat.choix}
           onChoisir={(caseId) => envoyer({ type: "CHOISIR_CHEMIN", caseId })}
           suivrePionActif={suivrePionActif}

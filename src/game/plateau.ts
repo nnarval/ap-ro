@@ -62,9 +62,13 @@ export function genererPlateau(graine: number): Plateau {
   const emplacementsEtoile: string[] = [];
   const ecart = nb / nbEtoiles;
   for (let i = 0; i < nbEtoiles; i++) {
-    const index = Math.round(i * ecart + rng.entier(-1, 1));
-    const id = `c${((index % nb) + nb) % nb}`;
-    if (id !== "c0" && !emplacementsEtoile.includes(id)) {
+    const brut = Math.round(i * ecart + rng.entier(-1, 1));
+    let index = ((brut % nb) + nb) % nb;
+    // Tous les pions démarrent sur le départ : une étoile posée là serait
+    // cueillie au premier tour sans que personne l'ait cherchée.
+    if (index === 0) index = 1;
+    const id = `c${index}`;
+    if (!emplacementsEtoile.includes(id)) {
       emplacementsEtoile.push(id);
       cases[id].type = "etoile";
     }
