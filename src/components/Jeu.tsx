@@ -12,6 +12,8 @@ import type { Action, EtatPartie, Pion } from "@/game/types";
 
 const DELAI_PAS_MS = 340;
 const DELAI_RESOLUTION_MS = 550;
+/** Le premier pas attend que le gros dé finisse sa culbute au centre. */
+const DELAI_DE_MS = 1150;
 
 /** Les moments que tout le monde regarde en même temps, quel que soit le
  *  téléphone : réflexe, roulette, événement, fin de manche, duel. */
@@ -197,9 +199,12 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
   // continue quand même.
   useEffect(() => {
     if (etat.phase === "deplacement") {
+      // Le tout premier pas laisse le temps au gros dé de culbuter ; les
+      // suivants s'enchaînent au rythme du déplacement.
+      const premierPas = etat.pasRestants === etat.de;
       const t = setTimeout(
         () => envoyer({ type: "AVANCER", pasRestants: etat.pasRestants }),
-        DELAI_PAS_MS,
+        premierPas ? DELAI_DE_MS : DELAI_PAS_MS,
       );
       return () => clearTimeout(t);
     }
@@ -207,12 +212,16 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
       const t = setTimeout(() => envoyer({ type: "RESOUDRE_CASE" }), DELAI_RESOLUTION_MS);
       return () => clearTimeout(t);
     }
-  }, [etat.phase, etat.pasRestants, envoyer]);
+  }, [etat.phase, etat.pasRestants, etat.de, envoyer]);
 
   const actif = pionActif(etat);
   const adversaire = etat.pions.find((p) => p.id === etat.adversaireId);
   const defi = texteDefi(etat.defiId, etat.cartesPerso);
   const montreDe = etat.phase === "lancer" || etat.phase === "deplacement";
+  // Le gros dé central : au tout début du déplacement, avant le premier pas.
+  // Dérivé de l'état partagé, donc affiché sur tous les téléphones à la fois.
+  const montreGrosDe =
+    etat.phase === "deplacement" && etat.de !== null && etat.pasRestants === etat.de;
   const monPion = etat.pions.find((p) => p.id === monPionId);
   // C'est le téléphone de l'équipe qui joue qui pilote. Les autres regardent,
   // sauf pour les moments partagés que tout le monde voit.
@@ -409,7 +418,7 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
           onChoisir={(caseId) => envoyer({ type: "CHOISIR_CHEMIN", caseId })}
           suivrePionActif={suivrePionActif}
         />
-        {montreDe && (
+        {montreDe && !montreGrosDe && (
           <div className="pointer-events-none absolute right-4 bottom-4">
             <De valeur={etat.de} taille={58} />
           </div>
@@ -526,6 +535,21 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
           </p>
         )}
       </footer>
+
+      {montreGrosDe && (
+        <div
+          className="pointer-events-none fixed inset-0 z-40 flex flex-col items-center justify-center gap-4"
+          style={{ animation: "voile-entree 150ms ease-out both" }}
+        >
+          <div className="absolute inset-0 bg-white/45" style={{ backdropFilter: "blur(1px)" }} />
+          <div className="relative flex flex-col items-center gap-4">
+            <De key={`gros-${etat.manche}-${etat.indexTour}-${etat.de}`} valeur={etat.de} taille={150} />
+            <p className="text-2xl font-black" style={{ color: actif.couleur }}>
+              {actif.nom} font {etat.de}
+            </p>
+          </div>
+        </div>
+      )}
 
       {carte()}
     </div>
