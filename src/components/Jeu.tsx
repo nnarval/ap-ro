@@ -21,9 +21,11 @@ const PHASES_PARTAGEES = new Set<EtatPartie["phase"]>([
   "reflexe",
   "roulette",
   "evenement",
+  "bonus",
   "roueManche",
   "defiCollectif",
   "defiDuel",
+  "terminee",
 ]);
 
 /** Noir ou blanc sur une couleur donnée, pour garder le texte lisible. */
@@ -310,6 +312,22 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
           </CarteAnnonce>
         );
 
+      case "bonus":
+        return (
+          <CarteAnnonce
+            key={cleCarte}
+            couleur="#22c55e"
+            icone="🪙"
+            surtitre="Case bonus"
+            titre={`+${etat.gainBonus ?? 0} pièces`}
+            consigne={`${actif.nom} empochent ${etat.gainBonus ?? 0} pièces.`}
+          >
+            <Bouton onClick={() => envoyer({ type: "CONTINUER" })} couleur="#22c55e">
+              Continuer
+            </Bouton>
+          </CarteAnnonce>
+        );
+
       case "evenement":
         return (
           <CarteAnnonce
@@ -382,6 +400,38 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
             </Bouton>
           </CarteAnnonce>
         );
+
+      case "terminee": {
+        const medailles = ["🥇", "🥈", "🥉"];
+        return (
+          <CarteAnnonce key="fin" couleur="#facc15" icone="🏆" surtitre="Partie terminée" titre="Classement">
+            <ul className="space-y-1.5 text-left">
+              {classement(etat).map((p, i) => (
+                <li
+                  key={p.id}
+                  className="flex items-center gap-2 rounded-xl bg-[#f5f9fc] px-3 py-2"
+                >
+                  <span className="w-6 text-center text-lg">{medailles[i] ?? `${i + 1}.`}</span>
+                  <span
+                    className="h-3 w-3 shrink-0 rounded-full"
+                    style={{ backgroundColor: p.couleur }}
+                  />
+                  <span className="flex-1 truncate font-black text-[#0f2a43]">{p.nom}</span>
+                  <span className="font-black text-[#0f2a43]">{p.etoiles} ⭐</span>
+                  <span className="text-xs text-[#5b7891]">{p.pieces} 🪙</span>
+                </li>
+              ))}
+            </ul>
+            {onRejouer ? (
+              <Bouton onClick={onRejouer} couleur="#16c47f">
+                Nouvelle partie
+              </Bouton>
+            ) : (
+              <p className="text-center text-xs text-[#5b7891]">L&apos;hôte peut relancer une partie.</p>
+            )}
+          </CarteAnnonce>
+        );
+      }
 
       default:
         return null;
@@ -502,28 +552,6 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
             )}
             <Bouton onClick={() => envoyer({ type: "FIN_TOUR" })}>Au suivant</Bouton>
           </>
-        )}
-
-        {etat.phase === "terminee" && (
-          <div className="space-y-2 text-center">
-            <p className="text-sm text-[#5b7891]">Terminé — les gorgées à distribuer :</p>
-            <ul className="space-y-0.5 text-sm">
-              {classement(etat).map((p, i) => (
-                <li key={p.id}>
-                  <span className="text-[#5b7891]">{i + 1}.</span>{" "}
-                  <span className="font-bold" style={{ color: p.couleur }}>
-                    {p.nom}
-                  </span>{" "}
-                  — {p.etoiles} ⭐
-                </li>
-              ))}
-            </ul>
-            {onRejouer && (
-              <Bouton onClick={onRejouer} couleur="#16c47f">
-                Nouvelle partie
-              </Bouton>
-            )}
-          </div>
         )}
 
         {monPion && (

@@ -61,6 +61,8 @@ export type Phase =
   /** Deux équipes sur la même case : jeu de réflexe, le dernier boit. */
   | "reflexe"
   | "resolution"
+  /** Case bonus : on annonce le gain sur une carte avant de continuer. */
+  | "bonus"
   | "choixMalus"
   | "boutique"
   | "choixAdversaire"
@@ -116,6 +118,8 @@ export interface EtatPartie {
   /** Dernier saut d'étoile, pour l'animer côté écran. Remis à zéro au tour suivant. */
   dernierSautEtoile: { de: string; vers: string } | null;
 
+  /** En phase "bonus", le nombre de pièces gagnées, pour l'afficher. */
+  gainBonus: number | null;
   /** En phase "roulette", l'équipe désignée par la roue pour boire le shot. */
   equipeShot: string | null;
   /** En phase "evenement", le texte de l'effet tiré. */

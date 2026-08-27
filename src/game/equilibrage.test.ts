@@ -52,6 +52,7 @@ function unPas(etat: EtatPartie, rng: Rng): EtatPartie {
         type: "RESOUDRE_DEFI",
         vainqueurId: rng.reel() < 0.5 ? pionActif(etat).id : etat.adversaireId!,
       });
+    case "bonus":
     case "evenement":
     case "roulette":
       return reduire(etat, { type: "CONTINUER" });
@@ -117,6 +118,7 @@ describe("équilibrage", () => {
       "croisement",
       "reflexe",
       "resolution",
+      "bonus",
       "choixMalus",
       "boutique",
       "choixAdversaire",

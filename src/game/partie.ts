@@ -154,6 +154,7 @@ export function creerPartie(
     etoilesRestantes: objectif,
     objectifEtoiles: objectif,
     dernierSautEtoile: null,
+    gainBonus: null,
     equipeShot: null,
     evenementTexte: null,
     sourceDefi: null,
@@ -322,7 +323,8 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
             ...base,
             rng,
             pions: majPionActif(base, { pieces: pionActif(base).pieces + gain }),
-            phase: "finTour",
+            gainBonus: gain,
+            phase: "bonus",
             journal: noter(base, `case bonus, +${gain} pièces`),
           };
         }
@@ -486,9 +488,11 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
     }
 
     case "CONTINUER": {
-      // Ferme l'annonce d'un événement ou d'une roulette.
-      if (etat.phase !== "evenement" && etat.phase !== "roulette") return etat;
-      return { ...etat, phase: "finTour", equipeShot: null, evenementTexte: null };
+      // Ferme l'annonce d'un bonus, d'un événement ou d'une roulette.
+      if (etat.phase !== "evenement" && etat.phase !== "roulette" && etat.phase !== "bonus") {
+        return etat;
+      }
+      return { ...etat, phase: "finTour", equipeShot: null, evenementTexte: null, gainBonus: null };
     }
 
     case "FIN_TOUR": {
@@ -515,6 +519,7 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
         dernierSautEtoile: null,
         equipeShot: null,
         evenementTexte: null,
+        gainBonus: null,
         // Tour de table bouclé : la manche se termine par la roue à défis.
         phase: finDeManche ? "roueManche" : "lancer",
         de: null,
