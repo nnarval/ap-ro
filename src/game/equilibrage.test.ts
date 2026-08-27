@@ -11,20 +11,15 @@ const PIONS: DefinitionPion[] = [
   { nom: "D", membres: ["d"] },
 ];
 
-/** Manches jouables en 20 minutes, d'après le rythme visé. */
-const MANCHES_CIBLE = 6;
-
 type Rng = ReturnType<typeof creerRng>;
 
 /**
  * Un pas de simulation.
  *
- * Le choix aux croisements doit rester aléatoire : une politique régulière
- * enferme les pions dans une orbite périodique qui peut ne jamais croiser
- * certaines cases, ce qui fausse la mesure.
- *
- * Le pion achète l'étoile dès qu'il peut : c'est une borne optimiste, de vrais
- * joueurs feront moins bien, jamais mieux.
+ * Le choix aux croisements reste aléatoire : une politique régulière enferme
+ * les pions dans une orbite périodique qui peut ne jamais croiser certaines
+ * cases, ce qui fausse la mesure. L'équipe achète l'étoile dès qu'elle peut :
+ * borne optimiste, de vrais joueurs feront moins bien, jamais mieux.
  */
 function unPas(etat: EtatPartie, rng: Rng): EtatPartie {
   switch (etat.phase) {
@@ -34,9 +29,9 @@ function unPas(etat: EtatPartie, rng: Rng): EtatPartie {
       return reduire(etat, { type: "AVANCER", pasRestants: etat.pasRestants });
     case "croisement":
       return reduire(etat, { type: "CHOISIR_CHEMIN", caseId: rng.element(etat.choix) });
-    case "defiInstantane":
+    case "reflexe":
       return reduire(etat, {
-        type: "RESOUDRE_DEFI_INSTANTANE",
+        type: "RESOUDRE_REFLEXE",
         vainqueurId: rng.element(pionsSurCaseActive(etat)).id,
       });
     case "resolution":
@@ -57,8 +52,13 @@ function unPas(etat: EtatPartie, rng: Rng): EtatPartie {
         type: "RESOUDRE_DEFI",
         vainqueurId: rng.reel() < 0.5 ? pionActif(etat).id : etat.adversaireId!,
       });
+    case "evenement":
+    case "roulette":
+      return reduire(etat, { type: "CONTINUER" });
     case "finTour":
       return reduire(etat, { type: "FIN_TOUR" });
+    case "roueManche":
+      return reduire(etat, { type: "LANCER_ROUE_MANCHE" });
     case "defiCollectif":
       return reduire(etat, {
         type: "RESOUDRE_DEFI_COLLECTIF",
@@ -87,19 +87,7 @@ function jouer(
   return etat;
 }
 
-/** D'où viennent les étoiles, d'après le journal. */
-function sources(etat: EtatPartie) {
-  const contient = (motif: string) =>
-    etat.journal.filter((e) => e.texte.includes(motif)).length;
-  return {
-    plateau: contient("trouve une étoile"),
-    boutique: contient("achète une étoile"),
-    defiCollectif: contient("défi de fin de manche"),
-  };
-}
-
 const somme = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
-const moyenne = (xs: number[]) => somme(xs) / xs.length;
 const mediane = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 
 describe("équilibrage", () => {
@@ -109,14 +97,13 @@ describe("équilibrage", () => {
     for (const graine of graines) {
       const etat = jouer(graine, (e) => e.phase === "terminee" || e.manche > 3000);
       expect(etat.phase, `graine ${graine}`).toBe("terminee");
-      expect(somme(etat.pions.map((p) => p.etoiles))).toBe(REGLAGES.etoilesParPartie);
+      expect(somme(etat.pions.map((p) => p.etoiles))).toBe(etat.objectifEtoiles);
     }
   });
 
   /**
    * Une phase qu'aucune partie n'atteint, c'est du contenu que personne ne
-   * verra jamais — et ça n'a rien de théorique : les malus ont déjà été,
-   * pendant un temps, tous relégués sur les raccourcis.
+   * verra jamais.
    */
   it("fait passer les parties par toutes les phases du jeu", () => {
     const vues = new Set<Phase>();
@@ -128,44 +115,28 @@ describe("équilibrage", () => {
       "lancer",
       "deplacement",
       "croisement",
-      "defiInstantane",
+      "reflexe",
       "resolution",
       "choixMalus",
       "boutique",
       "choixAdversaire",
       "defiDuel",
+      "evenement",
+      "roulette",
       "finTour",
+      "roueManche",
       "defiCollectif",
       "terminee",
     ];
     expect([...attendues].filter((p) => !vues.has(p))).toEqual([]);
   });
 
-  it("distribue le gros des étoiles dans le temps imparti", () => {
-    const parties = graines.map((g) =>
-      jouer(g, (e) => e.manche > MANCHES_CIBLE || e.phase === "terminee"),
-    );
-    const etoiles = parties.map((e) => somme(e.pions.map((p) => p.etoiles)));
-    const src = parties.map(sources);
-
-    console.log(
-      [
-        "",
-        `  Après ${MANCHES_CIBLE} manches (la cible des 20 minutes) :`,
-        `    étoiles distribuées : ${moyenne(etoiles).toFixed(1)} / ${REGLAGES.etoilesParPartie}`,
-        `    dont défi de fin de manche : ${moyenne(src.map((s) => s.defiCollectif)).toFixed(1)}`,
-        `         trouvées sur le plateau : ${moyenne(src.map((s) => s.plateau)).toFixed(1)}`,
-        `         achetées en boutique : ${moyenne(src.map((s) => s.boutique)).toFixed(1)}`,
-        "",
-        `  Partie complète : ${mediane(
-          graines.map((g) => jouer(g, (e) => e.phase === "terminee").manche),
-        )} manches (médiane).`,
-        "",
-      ].join("\n"),
-    );
-
-    // Le défi de fin de manche garantit une étoile par manche : sans lui, le
-    // plateau seul plafonnait à ~0,3 étoile par partie.
-    expect(moyenne(etoiles)).toBeGreaterThanOrEqual(MANCHES_CIBLE);
+  it("boucle la partie dans le nombre de manches visé par l'objectif", () => {
+    const objectif = REGLAGES.objectifParDefaut;
+    const manches = graines.map((g) => jouer(g, (e) => e.phase === "terminee").manche);
+    // Une étoile garantie par fin de manche, plus celles du plateau : la partie
+    // ne doit pas traîner au-delà de l'objectif.
+    console.log(`  Objectif ${objectif} étoiles : ${mediane(manches)} manches (médiane).`);
+    expect(mediane(manches)).toBeLessThanOrEqual(objectif);
   });
 });

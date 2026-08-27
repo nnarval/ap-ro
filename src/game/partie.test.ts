@@ -22,8 +22,6 @@ function etoilesSousUnPion(etat: EtatPartie): string[] {
 /**
  * Force le pion actif à ramasser une étoile : on le pose dessus, en phase de
  * résolution. L'étoile du plateau est gratuite, elle est prise d'office.
- * Passer par le réducteur plutôt que par des dés truqués garde le test
- * indépendant de la chance.
  */
 function forcerRamassage(etat: EtatPartie, surCase: string): EtatPartie {
   const idActif = etat.ordreTour[etat.indexTour];
@@ -36,31 +34,27 @@ function forcerRamassage(etat: EtatPartie, surCase: string): EtatPartie {
 }
 
 describe("creerPartie", () => {
-  it("pose le bon nombre d'étoiles, sur des emplacements distincts", () => {
+  it("pose le bon nombre d'étoiles, sur des emplacements distincts et hors départ", () => {
     for (const graine of graines) {
       const etat = creerPartie(graine, PIONS);
       expect(etat.etoilesSur.length, `graine ${graine}`).toBe(REGLAGES.etoilesSurPlateau);
       expect(new Set(etat.etoilesSur).size).toBe(etat.etoilesSur.length);
-      for (const id of etat.etoilesSur) {
-        expect(etat.plateau.emplacementsEtoile).toContain(id);
-      }
+      expect(etat.etoilesSur, `graine ${graine}`).not.toContain(etat.plateau.depart);
+      expect(etoilesSousUnPion(etat), `graine ${graine}`).toEqual([]);
     }
   });
 
-  it("ne pose aucune étoile sur le départ, où tous les pions démarrent", () => {
-    for (const graine of graines) {
-      const etat = creerPartie(graine, PIONS);
-      expect(etoilesSousUnPion(etat), `graine ${graine}`).toEqual([]);
+  it("respecte l'objectif d'étoiles demandé", () => {
+    for (const objectif of REGLAGES.objectifsEtoile) {
+      const etat = creerPartie(graines[0], PIONS, { objectif });
+      expect(etat.objectifEtoiles).toBe(objectif);
+      expect(etat.etoilesRestantes).toBe(objectif);
     }
   });
 });
 
-describe("duel éclair", () => {
-  /**
-   * Place le pion actif juste avant `cible`, prêt à y poser le pied.
-   * On évite les croisements : le réducteur y demanderait un choix de chemin
-   * au lieu d'avancer.
-   */
+describe("réflexe", () => {
+  /** Place le pion actif juste avant `cible`, prêt à y poser le pied. */
   function preparerArrivee(etat: EtatPartie): { etat: EtatPartie; cible: string } | null {
     const depuis = Object.values(etat.plateau.cases).find(
       (c) => c.suivantes.length === 1 && c.suivantes[0] !== etat.plateau.depart,
@@ -78,20 +72,19 @@ describe("duel éclair", () => {
     };
   }
 
-  it("se déclenche quand un pion en rejoint un autre, et tire un défi instantané", () => {
+  it("se déclenche quand une équipe en rejoint une autre, et tire un réflexe", () => {
     for (const graine of graines.slice(0, 60)) {
       const prep = preparerArrivee(creerPartie(graine, PIONS));
       if (!prep) continue;
 
-      // On poste un adversaire sur la case d'arrivée.
       const avecOccupant: EtatPartie = {
         ...prep.etat,
         pions: prep.etat.pions.map((p, i) => (i === 1 ? { ...p, caseId: prep.cible } : p)),
       };
       const apres = reduire(avecOccupant, { type: "AVANCER", pasRestants: 1 });
 
-      expect(apres.phase, `graine ${graine}`).toBe("defiInstantane");
-      expect(defiParId(apres.defiId!)?.categorie, `graine ${graine}`).toBe("instantane");
+      expect(apres.phase, `graine ${graine}`).toBe("reflexe");
+      expect(defiParId(apres.defiId!)?.categorie, `graine ${graine}`).toBe("reflexe");
       expect(pionsSurCaseActive(apres).map((p) => p.id).sort()).toEqual(["p0", "p1"]);
     }
   });
@@ -100,7 +93,6 @@ describe("duel éclair", () => {
     for (const graine of graines.slice(0, 60)) {
       const prep = preparerArrivee(creerPartie(graine, PIONS));
       if (!prep) continue;
-      // Les autres pions sont au départ, la cible n'est pas le départ.
       const apres = reduire(prep.etat, { type: "AVANCER", pasRestants: 1 });
       expect(apres.phase, `graine ${graine}`).toBe("resolution");
       expect(apres.defiId).toBeNull();
@@ -114,18 +106,14 @@ describe("duel éclair", () => {
       pions: prep.etat.pions.map((p, i) => (i === 1 ? { ...p, caseId: prep.cible } : p)),
     };
     const duel = reduire(avecOccupant, { type: "AVANCER", pasRestants: 1 });
-    const apres = reduire(duel, { type: "RESOUDRE_DEFI_INSTANTANE", vainqueurId: "p1" });
+    const apres = reduire(duel, { type: "RESOUDRE_REFLEXE", vainqueurId: "p1" });
 
-    // La case doit encore produire son effet : le duel s'intercale, il ne
-    // remplace pas la résolution.
     expect(apres.phase).toBe("resolution");
     expect(apres.defiId).toBeNull();
-    expect(apres.journal.at(-1)?.texte).toContain(`${REGLAGES.gorgeesPerdantInstantane} gorgées`);
+    expect(apres.journal.at(-1)?.texte).toContain(`${REGLAGES.gorgeesPerdantReflexe} gorgées`);
   });
 
   it("ignore un second « avance » venu d'un autre téléphone", () => {
-    // En multi, tous les téléphones enchaînent le déplacement par minuterie.
-    // Sans garde, le pion sauterait autant de cases qu'il y a d'appareils.
     const etat = creerPartie(graines[0], PIONS);
     const depuis = Object.values(etat.plateau.cases).find((c) => c.suivantes.length === 1)!;
     const enRoute: EtatPartie = {
@@ -137,36 +125,33 @@ describe("duel éclair", () => {
 
     const unPas = reduire(enRoute, { type: "AVANCER", pasRestants: 3 });
     expect(unPas.pasRestants).toBe(2);
-
-    // Le doublon part du même compteur périmé : il ne doit rien faire.
     expect(reduire(unPas, { type: "AVANCER", pasRestants: 3 })).toBe(unPas);
-    // Alors que le pas suivant, lui, passe.
     expect(reduire(unPas, { type: "AVANCER", pasRestants: 2 }).pasRestants).toBe(1);
   });
 
-  it("refuse un vainqueur qui ne participe pas au duel", () => {
+  it("refuse un vainqueur qui ne participe pas au réflexe", () => {
     const prep = preparerArrivee(creerPartie(graines[0], PIONS))!;
     const avecOccupant: EtatPartie = {
       ...prep.etat,
       pions: prep.etat.pions.map((p, i) => (i === 1 ? { ...p, caseId: prep.cible } : p)),
     };
     const duel = reduire(avecOccupant, { type: "AVANCER", pasRestants: 1 });
-    expect(reduire(duel, { type: "RESOUDRE_DEFI_INSTANTANE", vainqueurId: "p2" })).toBe(duel);
+    expect(reduire(duel, { type: "RESOUDRE_REFLEXE", vainqueurId: "p2" })).toBe(duel);
   });
 });
 
-describe("ramassage d'une étoile", () => {
-  it("fait réapparaître l'étoile ailleurs, et jamais sous un pion", () => {
+describe("étoile greffée sur une case", () => {
+  it("saute ailleurs quand on la ramasse, et jamais sous un pion", () => {
     for (const graine of graines) {
       let etat = creerPartie(graine, PIONS);
 
       // On sature volontairement le plateau : les autres pions campent sur des
-      // emplacements d'étoile, pour ne laisser presque aucune case libre.
-      const emplacements = etat.plateau.emplacementsEtoile;
+      // cases-hôtes possibles, pour ne laisser presque aucune case libre.
+      const hotes = Object.keys(etat.plateau.cases).filter((id) => id !== etat.plateau.depart);
       etat = {
         ...etat,
         pions: etat.pions.map((p, i) =>
-          i === 0 ? p : { ...p, caseId: emplacements[i % emplacements.length] },
+          i === 0 ? p : { ...p, caseId: hotes[(i * 5) % hotes.length] },
         ),
       };
 
@@ -176,38 +161,36 @@ describe("ramassage d'une étoile", () => {
 
       expect(apres.etoilesSur, `graine ${graine}`).not.toContain(cible);
       expect(new Set(apres.etoilesSur).size).toBe(apres.etoilesSur.length);
+      expect(apres.etoilesRestantes).toBe(etat.etoilesRestantes - 1);
 
-      // Seule l'étoile qui vient d'être posée nous intéresse : qu'un pion se
-      // tienne sur l'autre est normal, c'est même comme ça qu'on la ramasse.
       const nouvelles = apres.etoilesSur.filter((id) => !gardee.includes(id));
-      // Plateau saturé à dessein : il peut ne rester aucun emplacement tenable,
-      // et mieux vaut alors une étoile de moins qu'une étoile mal posée.
       expect(nouvelles.length, `graine ${graine}`).toBeLessThanOrEqual(1);
-
-      const occupees = new Set(apres.pions.map((p) => p.caseId));
-      const optionsValides = emplacements.filter(
-        (id) => !gardee.includes(id) && !occupees.has(id) && id !== cible,
-      );
-      // Le repli tolère une case occupée, mais seulement s'il n'y avait
-      // vraiment aucune autre option.
-      if (optionsValides.length > 0 && nouvelles.length === 1) {
-        expect(optionsValides, `graine ${graine}`).toContain(nouvelles[0]);
+      if (nouvelles.length === 1) {
+        expect(apres.dernierSautEtoile).toEqual({ de: cible, vers: nouvelles[0] });
+        const occupees = new Set(apres.pions.map((p) => p.caseId));
+        const optionsValides = hotes.filter(
+          (id) => !gardee.includes(id) && !occupees.has(id) && id !== cible,
+        );
+        if (optionsValides.length > 0) {
+          expect(optionsValides, `graine ${graine}`).toContain(nouvelles[0]);
+        }
       }
     }
   });
 
   it("maintient deux étoiles sur le plateau tant qu'il en reste à distribuer", () => {
     for (const graine of graines.slice(0, 50)) {
-      let etat = creerPartie(graine, PIONS);
-      while (etat.etoilesRestantes > 0) {
+      let etat = creerPartie(graine, PIONS, { objectif: 8 });
+      let garde = 0;
+      while (etat.etoilesRestantes > 0 && garde++ < 100) {
         const attendu = Math.min(REGLAGES.etoilesSurPlateau, etat.etoilesRestantes);
         expect(etat.etoilesSur.length, `graine ${graine}`).toBe(attendu);
         etat = forcerRamassage(etat, etat.etoilesSur[0]);
       }
-      expect(etat.phase).toBe("terminee");
+      expect(etat.etoilesRestantes).toBe(0);
       expect(etat.etoilesSur).toEqual([]);
       const total = etat.pions.reduce((s, p) => s + p.etoiles, 0);
-      expect(total).toBe(REGLAGES.etoilesParPartie);
+      expect(total).toBe(8);
     }
   });
 });

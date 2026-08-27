@@ -1,7 +1,7 @@
 import { REGLAGES } from "./config";
-import { tirerDefi, type ModeJeu } from "./defis";
+import { tirerDefi, type Ambiance, type CartePerso, type ModeJeu } from "./defis";
 import { genererPlateau } from "./plateau";
-import { tirerEntier } from "./rng";
+import { tirer, tirerEntier } from "./rng";
 import type { Action, EntreeJournal, EtatPartie, Pion, Plateau } from "./types";
 
 export const COULEURS_PIONS = [
@@ -28,6 +28,18 @@ export interface DefinitionPion {
   membres: string[];
 }
 
+export interface OptionsPartie {
+  mode?: ModeJeu;
+  ambiance?: Ambiance;
+  objectif?: number;
+  cartesPerso?: CartePerso[];
+}
+
+/** Les cases qui peuvent accueillir une étoile : toutes, sauf le départ. */
+function hotesEtoile(plateau: Plateau): string[] {
+  return Object.keys(plateau.cases).filter((id) => id !== plateau.depart);
+}
+
 /**
  * Tire un emplacement pour une étoile qui apparaît.
  *
@@ -44,7 +56,7 @@ function tirerEmplacementEtoile(
   rng: number,
 ): [emplacement: string | null, rng: number] {
   const occupees = new Set(pions.map((p) => p.caseId));
-  const libres = plateau.emplacementsEtoile.filter(
+  const libres = hotesEtoile(plateau).filter(
     (id) => !dejaPrises.includes(id) && !interdits.includes(id),
   );
   const candidats = libres.filter((id) => !occupees.has(id));
@@ -79,7 +91,7 @@ function regarnirEtoiles(
     liste.push(emplacement);
   }
   // En fin de partie il peut rester moins d'étoiles à distribuer que le plateau
-  // n'en porte : le surplus disparaît, sinon on en donnerait plus que dix.
+  // n'en porte : le surplus disparaît, sinon on en donnerait plus que l'objectif.
   if (liste.length > cible) liste = liste.slice(0, cible);
 
   return [liste, rng];
@@ -88,7 +100,7 @@ function regarnirEtoiles(
 export function creerPartie(
   graine: number,
   definitions: DefinitionPion[],
-  mode: ModeJeu = "multi",
+  options: OptionsPartie = {},
 ): EtatPartie {
   if (definitions.length < REGLAGES.pionsMin || definitions.length > REGLAGES.pionsMax) {
     throw new Error(
@@ -96,7 +108,12 @@ export function creerPartie(
     );
   }
 
-  const plateau = genererPlateau(graine);
+  const mode = options.mode ?? "multi";
+  const ambiance = options.ambiance ?? "classique";
+  const objectif = options.objectif ?? REGLAGES.objectifParDefaut;
+  const cartesPerso = options.cartesPerso ?? [];
+
+  const plateau = genererPlateau(graine, ambiance);
   const pions: Pion[] = definitions.map((d, i) => ({
     id: `p${i}`,
     nom: d.nom,
@@ -114,7 +131,7 @@ export function creerPartie(
     plateau,
     pions,
     [],
-    REGLAGES.etoilesParPartie,
+    objectif,
     (graine ^ 0x9e3779b9) >>> 0,
   );
 
@@ -126,13 +143,21 @@ export function creerPartie(
     manche: 1,
     phase: "lancer",
     mode,
+    ambiance,
+    cartesPerso,
     de: null,
     pasRestants: 0,
     choix: [],
     adversaireId: null,
     defiId: null,
     etoilesSur,
-    etoilesRestantes: REGLAGES.etoilesParPartie,
+    etoilesRestantes: objectif,
+    objectifEtoiles: objectif,
+    dernierSautEtoile: null,
+    equipeShot: null,
+    evenementTexte: null,
+    sourceDefi: null,
+    equipeCreatriceId: null,
     rng,
     journal: [],
   };
@@ -157,10 +182,17 @@ function majPionActif(etat: EtatPartie, patch: Partial<Pion>): Pion[] {
   return majPion(etat, etat.ordreTour[etat.indexTour], patch);
 }
 
+/** Tire une carte de la catégorie voulue, en tenant compte de l'ambiance et des
+ *  cartes perso. */
+function tirerCarte(etat: EtatPartie, categorie: Parameters<typeof tirerDefi>[0]) {
+  return tirerDefi(categorie, etat.ambiance, etat.mode, etat.cartesPerso, etat.rng);
+}
+
 /**
  * Donne une étoile à un pion et remet le plateau d'aplomb.
  * `retiree` est l'emplacement d'où l'étoile a été prise, s'il y en a un — une
- * étoile gagnée en défi ne vient pas du plateau.
+ * étoile gagnée en défi ou achetée ne vient pas du plateau. Quand elle vient du
+ * plateau, on note le saut pour l'animer à l'écran.
  */
 function donnerEtoile(
   etat: EtatPartie,
@@ -168,9 +200,10 @@ function donnerEtoile(
   coutPieces: number,
   retiree: string | null,
 ): EtatPartie {
+  const beneficiaire = etat.pions.find((p) => p.id === pionId)!;
   const pions = majPion(etat, pionId, {
-    etoiles: etat.pions.find((p) => p.id === pionId)!.etoiles + 1,
-    pieces: etat.pions.find((p) => p.id === pionId)!.pieces - coutPieces,
+    etoiles: beneficiaire.etoiles + 1,
+    pieces: beneficiaire.pieces - coutPieces,
   });
   const etoilesRestantes = etat.etoilesRestantes - 1;
   const apresRetrait = retiree ? etat.etoilesSur.filter((id) => id !== retiree) : etat.etoilesSur;
@@ -185,7 +218,12 @@ function donnerEtoile(
     retiree ? [retiree] : [],
   );
 
-  return { ...etat, pions, etoilesRestantes, etoilesSur, rng };
+  // Le saut n'a de sens que pour une étoile ramassée sur le plateau.
+  const nouvelle = etoilesSur.find((id) => !apresRetrait.includes(id));
+  const dernierSautEtoile =
+    retiree && nouvelle ? { de: retiree, vers: nouvelle } : etat.dernierSautEtoile;
+
+  return { ...etat, pions, etoilesRestantes, etoilesSur, rng, dernierSautEtoile };
 }
 
 /** Fin de tour, ou fin de partie s'il n'y a plus d'étoile à distribuer. */
@@ -213,12 +251,12 @@ function avancerSur(etat: EtatPartie, caseId: string): EtatPartie {
   const enChemin = { ...etat, pions, pasRestants, choix: [], journal };
   if (pasRestants > 0) return { ...enChemin, phase: "deplacement" };
 
-  // Atterrissage sur une case déjà occupée : duel éclair avant que la case ne
+  // Atterrissage sur une case déjà occupée : réflexe avant que la case ne
   // produise son effet.
   const dejaLa = pions.some((p) => p.id !== pion.id && p.caseId === caseId);
   if (dejaLa) {
-    const [defiId, rng] = tirerDefi("instantane", etat.mode, etat.rng);
-    return { ...enChemin, phase: "defiInstantane", defiId, rng };
+    const [defiId, rng] = tirerCarte(enChemin, "reflexe");
+    return { ...enChemin, phase: "reflexe", defiId, rng };
   }
   return { ...enChemin, phase: "resolution" };
 }
@@ -242,6 +280,7 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
         rng,
         pasRestants: de,
         phase: "deplacement",
+        dernierSautEtoile: null,
         journal: noter(etat, `fait ${de}`),
       };
     }
@@ -266,53 +305,58 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
     case "RESOUDRE_CASE": {
       if (etat.phase !== "resolution") return etat;
       const pion = pionActif(etat);
-      const caseCourante = etat.plateau.cases[pion.caseId];
 
+      // Étoile greffée sur la case : on la ramasse d'abord, elle saute ailleurs.
+      let base = etat;
+      if (etat.etoilesSur.includes(pion.caseId)) {
+        base = donnerEtoile(etat, pion.id, 0, pion.caseId);
+        base = { ...base, journal: noter(base, "trouve une étoile !") };
+        if (base.etoilesRestantes <= 0) return { ...base, phase: "terminee" };
+      }
+
+      const caseCourante = base.plateau.cases[pion.caseId];
       switch (caseCourante.type) {
         case "bonus": {
-          const [gain, rng] = tirerEntier(etat.rng, REGLAGES.gainBonusMin, REGLAGES.gainBonusMax);
+          const [gain, rng] = tirerEntier(base.rng, REGLAGES.gainBonusMin, REGLAGES.gainBonusMax);
           return {
-            ...etat,
+            ...base,
             rng,
-            pions: majPionActif(etat, { pieces: pion.pieces + gain }),
+            pions: majPionActif(base, { pieces: pionActif(base).pieces + gain }),
             phase: "finTour",
-            journal: noter(etat, `case bonus, +${gain} pièces`),
+            journal: noter(base, `case bonus, +${gain} pièces`),
           };
         }
 
-        case "malus":
-          return { ...etat, phase: "choixMalus" };
+        case "malus": {
+          // Le malus révèle une carte : un gage à boire, ou un refus payant.
+          const [defiId, rng] = tirerCarte(base, "malus");
+          return { ...base, defiId, rng, phase: "choixMalus" };
+        }
 
         case "defi":
-          return { ...etat, phase: "choixAdversaire" };
+          return { ...base, phase: "choixAdversaire" };
 
         case "boutique":
-          return { ...etat, phase: "boutique" };
+          return { ...base, phase: "boutique" };
 
-        case "etoile": {
-          if (!etat.etoilesSur.includes(caseCourante.id)) {
-            return {
-              ...etat,
-              phase: "finTour",
-              journal: noter(etat, "emplacement d'étoile, mais elle est ailleurs"),
-            };
-          }
-          // Celle-ci se trouve, elle ne s'achète pas : la boutique est l'autre
-          // source, payante.
-          const apres = donnerEtoile(etat, pion.id, 0, caseCourante.id);
+        case "roulette": {
+          // La roue des couleurs : une équipe est tirée, elle boira le shot.
+          const [i, rng] = tirerEntier(base.rng, 0, base.pions.length - 1);
+          const designe = base.pions[i];
           return {
-            ...apres,
-            phase: suite(apres),
-            journal: noter(etat, "trouve une étoile !"),
+            ...base,
+            rng,
+            equipeShot: designe.id,
+            phase: "roulette",
+            journal: noter(base, `roulette à shot : ${designe.nom} boit`, designe.id),
           };
         }
 
-        // Le contenu vient plus tard.
         case "evenement":
-          return { ...etat, phase: "finTour", journal: noter(etat, "case événement (à venir)") };
+          return evenement(base);
 
         default:
-          return { ...etat, phase: "finTour" };
+          return { ...base, phase: "finTour" };
       }
     }
 
@@ -320,13 +364,14 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
       if (etat.phase !== "choixMalus") return etat;
       const pion = pionActif(etat);
       if (action.gage) {
-        return { ...etat, phase: "finTour", journal: noter(etat, "préfère le gage") };
+        return { ...etat, defiId: null, phase: "finTour", journal: noter(etat, "relève le gage") };
       }
       return {
         ...etat,
         pions: majPionActif(etat, { pieces: Math.max(0, pion.pieces - REGLAGES.perteMalus) }),
+        defiId: null,
         phase: "finTour",
-        journal: noter(etat, `lâche ${REGLAGES.perteMalus} pièces`),
+        journal: noter(etat, `refuse et lâche ${REGLAGES.perteMalus} pièces`),
       };
     }
 
@@ -339,7 +384,7 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
       return {
         ...apres,
         phase: suite(apres),
-        journal: noter(etat, `achète une étoile pour ${REGLAGES.prixEtoileBoutique} pièces`),
+        journal: noter(apres, `achète une étoile pour ${REGLAGES.prixEtoileBoutique} pièces`),
       };
     }
 
@@ -364,8 +409,8 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
       return { ...etat, phase: "finTour" };
     }
 
-    case "RESOUDRE_DEFI_INSTANTANE": {
-      if (etat.phase !== "defiInstantane") return etat;
+    case "RESOUDRE_REFLEXE": {
+      if (etat.phase !== "reflexe") return etat;
       const participants = pionsSurCaseActive(etat);
       const vainqueur = participants.find((p) => p.id === action.vainqueurId);
       if (!vainqueur) return etat;
@@ -379,9 +424,9 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
         phase: "resolution",
         journal: noter(
           etat,
-          `${vainqueur.nom} gagne le duel éclair — ${perdants
+          `${vainqueur.nom} gagne le réflexe — ${perdants
             .map((p) => p.nom)
-            .join(", ")} boivent ${REGLAGES.gorgeesPerdantInstantane} gorgées`,
+            .join(", ")} boivent ${REGLAGES.gorgeesPerdantReflexe} gorgées`,
           vainqueur.id,
         ),
       };
@@ -396,7 +441,7 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
       const defie = etat.pions.find((p) => p.id === action.pionId)!;
       // Le défi n'est révélé qu'une fois l'adversaire choisi : sinon on
       // choisirait sa victime en fonction de l'épreuve.
-      const [defiId, rng] = tirerDefi("duel", etat.mode, etat.rng);
+      const [defiId, rng] = tirerCarte(etat, "duel");
       return {
         ...etat,
         adversaireId: action.pionId,
@@ -422,10 +467,7 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
         adversaireId: null,
         defiId: null,
         phase: "finTour",
-        journal: noter(
-          etat,
-          `${vainqueur.nom} remporte le duel, +${REGLAGES.gainDefiDuel} pièces`,
-        ),
+        journal: noter(etat, `${vainqueur.nom} remporte le duel, +${REGLAGES.gainDefiDuel} pièces`),
       };
     }
 
@@ -443,14 +485,19 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
       };
     }
 
+    case "CONTINUER": {
+      // Ferme l'annonce d'un événement ou d'une roulette.
+      if (etat.phase !== "evenement" && etat.phase !== "roulette") return etat;
+      return { ...etat, phase: "finTour", equipeShot: null, evenementTexte: null };
+    }
+
     case "FIN_TOUR": {
       if (etat.phase !== "finTour") return etat;
       const indexTour = (etat.indexTour + 1) % etat.ordreTour.length;
 
       // Le placement d'une étoile peut échouer quand tous les emplacements sont
-      // occupés. Les pions ayant bougé depuis, on retente ici : sans ça le
-      // plateau resterait à court d'étoiles jusqu'au prochain ramassage.
-      const [etoilesSur, rngApres] = regarnirEtoiles(
+      // occupés. Les pions ayant bougé depuis, on retente ici.
+      const [etoilesSur, rng] = regarnirEtoiles(
         etat.plateau,
         etat.pions,
         etat.etoilesSur,
@@ -458,22 +505,49 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
         etat.rng,
       );
 
-      // Tour de table bouclé : la manche se termine par le défi collectif.
       const finDeManche = indexTour === 0;
-      const [defiId, rng] = finDeManche
-        ? tirerDefi("collectif", etat.mode, rngApres)
-        : [null, rngApres];
-
       return {
         ...etat,
         indexTour,
         etoilesSur,
         rng,
-        defiId,
-        phase: finDeManche ? "defiCollectif" : "lancer",
+        defiId: null,
+        dernierSautEtoile: null,
+        equipeShot: null,
+        evenementTexte: null,
+        // Tour de table bouclé : la manche se termine par la roue à défis.
+        phase: finDeManche ? "roueManche" : "lancer",
         de: null,
         pasRestants: 0,
         choix: [],
+      };
+    }
+
+    case "LANCER_ROUE_MANCHE": {
+      if (etat.phase !== "roueManche") return etat;
+      // Côté « une équipe crée le défi » ou côté « carte de Claude », 50/50.
+      const [cote, rng1] = tirer(etat.rng);
+      if (cote < 0.5) {
+        const [defiId, rng2] = tirerDefi("collectif", etat.ambiance, etat.mode, etat.cartesPerso, rng1);
+        return {
+          ...etat,
+          rng: rng2,
+          sourceDefi: "claude",
+          equipeCreatriceId: null,
+          defiId,
+          phase: "defiCollectif",
+        };
+      }
+      const [i, rng2] = tirerEntier(rng1, 0, etat.pions.length - 1);
+      const equipe = etat.pions[i];
+      return {
+        ...etat,
+        rng: rng2,
+        sourceDefi: "equipe",
+        equipeCreatriceId: equipe.id,
+        defiId: null,
+        phase: "defiCollectif",
+        journal: noter(etat, `${equipe.nom} inventent le défi de fin de manche`, equipe.id),
       };
     }
 
@@ -482,8 +556,8 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
       const vainqueur = etat.pions.find((p) => p.id === action.vainqueurId);
       if (!vainqueur) return etat;
 
-      // C'est ici que les étoiles arrivent vraiment : le plateau seul n'en
-      // fournit qu'environ une par partie (voir equilibrage.test.ts).
+      // La fin de manche garantit une étoile : le plateau seul n'en fournit
+      // qu'une poignée par partie.
       const apres = donnerEtoile(etat, vainqueur.id, 0, null);
       return {
         ...apres,
@@ -492,14 +566,88 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
         de: null,
         pasRestants: 0,
         defiId: null,
+        sourceDefi: null,
+        equipeCreatriceId: null,
+        dernierSautEtoile: null,
         phase: apres.etoilesRestantes > 0 ? "lancer" : "terminee",
-        journal: noter(etat, `remporte le défi de fin de manche et une étoile`, vainqueur.id),
+        journal: noter(etat, "remporte le défi de fin de manche et une étoile", vainqueur.id),
       };
     }
 
     default:
       return etat;
   }
+}
+
+/**
+ * Case événement : un effet surprise pour l'équipe active. Tiré au sort, appliqué
+ * aussitôt, puis annoncé (phase "evenement"). L'équipe ferme avec CONTINUER.
+ */
+function evenement(etat: EtatPartie): EtatPartie {
+  const actif = pionActif(etat);
+  const [i, rng] = tirerEntier(etat.rng, 0, 5);
+  const base = { ...etat, rng };
+
+  switch (i) {
+    case 0: {
+      const texte = "Cagnotte surprise : +5 pièces.";
+      return annoncerEvenement(
+        { ...base, pions: majPionActif(base, { pieces: actif.pieces + 5 }) },
+        texte,
+      );
+    }
+    case 1: {
+      const texte = "Contrôle surprise : −4 pièces.";
+      return annoncerEvenement(
+        { ...base, pions: majPionActif(base, { pieces: Math.max(0, actif.pieces - 4) }) },
+        texte,
+      );
+    }
+    case 2: {
+      const texte = "Tournée offerte : +2 gorgées à distribuer.";
+      return annoncerEvenement(
+        { ...base, pions: majPionActif(base, { gorgees: actif.gorgees + 2 }) },
+        texte,
+      );
+    }
+    case 3: {
+      const texte = `Coup de moins bien : ${actif.nom} boivent 3 gorgées.`;
+      return annoncerEvenement(base, texte);
+    }
+    case 4: {
+      // Racket : on prend 3 pièces à l'équipe la plus riche (hors soi).
+      const victimes = base.pions.filter((p) => p.id !== actif.id);
+      const cible = victimes.reduce((a, b) => (b.pieces > a.pieces ? b : a), victimes[0]);
+      const vol = Math.min(3, cible.pieces);
+      const pions = base.pions.map((p) => {
+        if (p.id === cible.id) return { ...p, pieces: p.pieces - vol };
+        if (p.id === actif.id) return { ...p, pieces: p.pieces + vol };
+        return p;
+      });
+      return annoncerEvenement(
+        { ...base, pions },
+        `Racket : ${actif.nom} piquent ${vol} pièces à ${cible.nom}.`,
+      );
+    }
+    default: {
+      // Mini-roulette : la roue désigne une équipe qui boit un shot.
+      const [j, rng2] = tirerEntier(base.rng, 0, base.pions.length - 1);
+      const designe = base.pions[j];
+      return annoncerEvenement(
+        { ...base, rng: rng2 },
+        `Mini-roulette : ${designe.nom} boivent un shot.`,
+      );
+    }
+  }
+}
+
+function annoncerEvenement(etat: EtatPartie, texte: string): EtatPartie {
+  return {
+    ...etat,
+    evenementTexte: texte,
+    phase: "evenement",
+    journal: noter(etat, `événement — ${texte}`),
+  };
 }
 
 /** Classement final, du plus d'étoiles au moins. Les pièces départagent. */

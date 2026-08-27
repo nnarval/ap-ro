@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { EFFECTIFS_FIXES, REGLAGES } from "./config";
+import { effectifsPour } from "./config";
 import { genererPlateau } from "./plateau";
-import type { TypeCase } from "./types";
+import type { Ambiance, TypeCase } from "./types";
 
 /** Un plateau tiré au hasard doit rester jouable, quelle que soit la graine. */
 describe("genererPlateau", () => {
   const graines = Array.from({ length: 300 }, (_, i) => i * 7919 + 13);
+  const ambiances: Ambiance[] = ["classique", "dejaChaud", "sale", "chaos", "equipes"];
 
   it("ne produit que des liens vers des cases existantes", () => {
     for (const graine of graines) {
@@ -34,86 +35,50 @@ describe("genererPlateau", () => {
     }
   });
 
-  it("laisse assez d'emplacements d'étoile pour en garnir plusieurs", () => {
-    for (const graine of graines) {
-      const p = genererPlateau(graine);
-      // Il faut de la marge : les emplacements occupés par un pion sont écartés
-      // au moment de faire réapparaître une étoile.
-      expect(p.emplacementsEtoile.length, `graine ${graine}`).toBeGreaterThan(
-        REGLAGES.etoilesSurPlateau + 1,
-      );
-      for (const id of p.emplacementsEtoile) {
-        expect(p.cases[id].type).toBe("etoile");
-      }
-    }
-  });
+  it("respecte des effectifs FIXES par type, propres à l'ambiance", () => {
+    for (const ambiance of ambiances) {
+      const attendus = effectifsPour(ambiance);
+      const totalAttendu = Object.values(attendus).reduce((a, b) => a + b, 0);
+      for (const graine of graines) {
+        const p = genererPlateau(graine, ambiance);
+        const cases = Object.values(p.cases);
+        const compte = (t: TypeCase) => cases.filter((c) => c.type === t).length;
+        const contexte = `ambiance ${ambiance}, graine ${graine}`;
 
-  it("ne pose jamais d'étoile sur le départ", () => {
-    for (const graine of graines) {
-      const p = genererPlateau(graine);
-      expect(p.emplacementsEtoile, `graine ${graine}`).not.toContain(p.depart);
-      expect(p.cases[p.depart].type).toBe("depart");
-    }
-  });
-
-  it("respecte les effectifs voulus pour chaque type", () => {
-    for (const graine of graines) {
-      const p = genererPlateau(graine);
-      const cases = Object.values(p.cases);
-      const compte = (t: TypeCase) => cases.filter((c) => c.type === t).length;
-      const contexte = `graine ${graine}`;
-
-      expect(compte("depart"), contexte).toBe(1);
-
-      for (const [type, bornes] of [
-        ["evenement", EFFECTIFS_FIXES.evenement],
-        ["boutique", EFFECTIFS_FIXES.boutique],
-      ] as const) {
-        expect(compte(type), `${type}, ${contexte}`).toBeGreaterThanOrEqual(bornes.min);
-        expect(compte(type), `${type}, ${contexte}`).toBeLessThanOrEqual(bornes.max);
-      }
-
-      // La règle qui compte : défi, bonus et malus occupent la majorité du
-      // plateau, quelle que soit sa taille.
-      const majoritaires = compte("defi") + compte("bonus") + compte("malus");
-      expect(majoritaires / cases.length, contexte).toBeGreaterThan(0.5);
-
-      // Et le défi domine ses deux voisins : c'est le moteur du jeu.
-      expect(compte("defi"), contexte).toBeGreaterThanOrEqual(compte("malus"));
-      expect(compte("bonus"), contexte).toBeGreaterThanOrEqual(compte("malus"));
-      for (const type of ["defi", "bonus", "malus"] as const) {
-        expect(compte(type), `${type}, ${contexte}`).toBeGreaterThanOrEqual(3);
-      }
-    }
-  });
-
-  it("rend les raccourcis plus risqués sans vider le circuit de ses malus", () => {
-    let malusRaccourci = 0;
-    let totalRaccourci = 0;
-    let malusCircuit = 0;
-    let totalCircuit = 0;
-    let plateauxSansMalusSurLeCircuit = 0;
-
-    for (const graine of graines) {
-      let surCeCircuit = 0;
-      for (const c of Object.values(genererPlateau(graine).cases)) {
-        if (c.id.startsWith("r")) {
-          totalRaccourci++;
-          if (c.type === "malus") malusRaccourci++;
-        } else {
-          totalCircuit++;
-          if (c.type === "malus") surCeCircuit++;
+        expect(compte("depart"), contexte).toBe(1);
+        expect(cases.length, contexte).toBe(totalAttendu + 1);
+        for (const [type, n] of Object.entries(attendus)) {
+          expect(compte(type as TypeCase), `${type}, ${contexte}`).toBe(n);
         }
       }
-      malusCircuit += surCeCircuit;
-      if (surCeCircuit === 0) plateauxSansMalusSurLeCircuit++;
     }
+  });
 
-    // Un raccourci plus court ET sans risque serait toujours le bon choix.
-    expect(malusRaccourci / totalRaccourci).toBeGreaterThan(
-      1.5 * (malusCircuit / totalCircuit),
-    );
-    // Mais qui ne prend jamais de raccourci doit quand même croiser des malus.
+  it("laisse à chaque croisement au moins un chemin qui ne commence pas par un malus", () => {
+    for (const ambiance of ambiances) {
+      for (const graine of graines) {
+        const p = genererPlateau(graine, ambiance);
+        for (const c of Object.values(p.cases)) {
+          if (c.suivantes.length <= 1) continue;
+          const sansMalus = c.suivantes.filter((s) => p.cases[s].type !== "malus");
+          expect(
+            sansMalus.length,
+            `croisement ${c.id} tout en malus (ambiance ${ambiance}, graine ${graine})`,
+          ).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  it("garde des malus sur le circuit, pas seulement sur les raccourcis", () => {
+    let plateauxSansMalusSurLeCircuit = 0;
+    for (const graine of graines) {
+      const surCircuit = Object.values(genererPlateau(graine).cases).filter(
+        (c) => !c.id.startsWith("r") && c.type === "malus",
+      ).length;
+      if (surCircuit === 0) plateauxSansMalusSurLeCircuit++;
+    }
+    // Qui ne prend jamais de raccourci doit quand même croiser des malus.
     expect(plateauxSansMalusSurLeCircuit).toBe(0);
   });
 
