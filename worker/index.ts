@@ -1,5 +1,6 @@
 import { routePartykitRequest, Server, type Connection } from "partyserver";
 import { REGLAGES } from "../src/game/config";
+import type { Ambiance, CartePerso, CategorieDefi } from "../src/game/defis";
 import { NOMS_EQUIPES, creerPartie, reduire, type DefinitionPion } from "../src/game/partie";
 import { graineAleatoire } from "../src/game/rng";
 import type { EtatPartie } from "../src/game/types";
@@ -14,6 +15,15 @@ interface Sauvegarde {
   partie: EtatPartie | null;
 }
 
+const AMBIANCES: Ambiance[] = ["classique", "dejaChaud", "sale", "chaos", "equipes"];
+const CATEGORIES_PERSO: CategorieDefi[] = ["reflexe", "duel", "collectif", "malus"];
+const LONGUEUR_MAX_CARTE = 140;
+
+/** Noms d'équipe par défaut, complétés jusqu'à `nb`. */
+function nomsParDefaut(nb: number): string[] {
+  return Array.from({ length: nb }, (_, i) => NOMS_EQUIPES[i]);
+}
+
 /**
  * Une partie = une salle = une instance de ce Durable Object, nommée par le
  * code. Le code de partie *est* l'adresse : pas d'annuaire à tenir, pas de
@@ -26,7 +36,16 @@ interface Sauvegarde {
 export class Partie extends Server<Env> {
   static options = { hibernate: true };
 
-  private salon: Salon = { code: "", hoteId: null, joueurs: [], nbEquipes: 4 };
+  private salon: Salon = {
+    code: "",
+    hoteId: null,
+    joueurs: [],
+    nbEquipes: 4,
+    nomsEquipes: nomsParDefaut(4),
+    objectif: REGLAGES.objectifParDefaut,
+    ambiance: "classique",
+    cartesPerso: [],
+  };
   private partie: EtatPartie | null = null;
 
   async onStart() {
@@ -34,7 +53,7 @@ export class Partie extends Server<Env> {
     // s'évaporerait pendant que les joueurs discutent.
     const sauvegarde = await this.ctx.storage.get<Sauvegarde>("partie");
     if (sauvegarde) {
-      this.salon = sauvegarde.salon;
+      this.salon = { ...this.salon, ...sauvegarde.salon };
       this.partie = sauvegarde.partie;
     }
     this.salon.code = this.name;
@@ -69,6 +88,10 @@ export class Partie extends Server<Env> {
 
   private estHote(conn: Connection): boolean {
     return this.salon.hoteId === conn.id;
+  }
+
+  private equipeDe(conn: Connection): number | null {
+    return this.salon.joueurs.find((j) => j.id === conn.id)?.equipe ?? null;
   }
 
   onConnect(conn: Connection) {
@@ -129,10 +152,17 @@ export class Partie extends Server<Env> {
         if (n < REGLAGES.pionsMin || n > REGLAGES.pionsMax) break;
 
         this.salon.nbEquipes = n;
+        // Conserver les noms existants, compléter le reste par défaut.
+        this.salon.nomsEquipes = Array.from(
+          { length: n },
+          (_, i) => this.salon.nomsEquipes[i] ?? NOMS_EQUIPES[i],
+        );
         // Rapatrier ceux dont l'équipe vient de disparaître.
         for (const j of this.salon.joueurs) {
           if (j.equipe >= n) j.equipe = this.equipeLaPlusVide();
         }
+        // Écarter les cartes d'équipes qui n'existent plus.
+        this.salon.cartesPerso = this.salon.cartesPerso.filter((c) => c.equipe < n);
         break;
       }
 
@@ -143,6 +173,64 @@ export class Partie extends Server<Env> {
         if (!cible || (cible.id !== conn.id && !this.estHote(conn))) break;
         if (message.equipe < 0 || message.equipe >= this.salon.nbEquipes) break;
         cible.equipe = message.equipe;
+        break;
+      }
+
+      case "renommerEquipe": {
+        if (this.partie) break;
+        const equipe = this.equipeDe(conn);
+        // Chaque équipe ne modifie que son propre nom ; l'hôte peut tout renommer.
+        if (equipe !== message.equipe && !this.estHote(conn)) break;
+        if (message.equipe < 0 || message.equipe >= this.salon.nbEquipes) break;
+        const nom = message.nom.trim().slice(0, 16);
+        this.salon.nomsEquipes[message.equipe] = nom || NOMS_EQUIPES[message.equipe];
+        break;
+      }
+
+      case "reglerObjectif": {
+        if (!this.estHote(conn)) return this.repondreErreur(conn, "Seul l'hôte règle l'objectif.");
+        if (this.partie) break;
+        if (!(REGLAGES.objectifsEtoile as readonly number[]).includes(message.objectif)) break;
+        this.salon.objectif = message.objectif;
+        break;
+      }
+
+      case "reglerAmbiance": {
+        if (!this.estHote(conn)) return this.repondreErreur(conn, "Seul l'hôte règle l'ambiance.");
+        if (this.partie) break;
+        if (!AMBIANCES.includes(message.ambiance)) break;
+        this.salon.ambiance = message.ambiance;
+        break;
+      }
+
+      case "ajouterCartePerso": {
+        if (this.partie) break;
+        const equipe = this.equipeDe(conn);
+        if (equipe === null) break;
+        if (!CATEGORIES_PERSO.includes(message.categorie)) break;
+        const texte = message.texte.trim().slice(0, LONGUEUR_MAX_CARTE);
+        if (texte.length === 0) break;
+        const dejaEcrites = this.salon.cartesPerso.filter((c) => c.equipe === equipe).length;
+        if (dejaEcrites >= REGLAGES.cartesPersoParEquipe) {
+          return this.repondreErreur(conn, "Cette équipe a déjà écrit ses 24 cartes.");
+        }
+        const carte: CartePerso = {
+          id: `perso-${crypto.randomUUID().slice(0, 8)}`,
+          categorie: message.categorie,
+          texte,
+          equipe,
+        };
+        this.salon.cartesPerso.push(carte);
+        break;
+      }
+
+      case "supprimerCartePerso": {
+        if (this.partie) break;
+        const carte = this.salon.cartesPerso.find((c) => c.id === message.id);
+        if (!carte) break;
+        // On ne supprime que ses propres cartes ; l'hôte peut tout supprimer.
+        if (carte.equipe !== this.equipeDe(conn) && !this.estHote(conn)) break;
+        this.salon.cartesPerso = this.salon.cartesPerso.filter((c) => c.id !== message.id);
         break;
       }
 
@@ -158,7 +246,12 @@ export class Partie extends Server<Env> {
             "Chaque équipe doit avoir au moins un joueur pour démarrer.",
           );
         }
-        this.partie = creerPartie(graineAleatoire(), equipes, "multi");
+        this.partie = creerPartie(graineAleatoire(), equipes, {
+          mode: "multi",
+          ambiance: this.salon.ambiance,
+          objectif: this.salon.objectif,
+          cartesPerso: this.salon.cartesPerso,
+        });
         break;
       }
 
@@ -190,7 +283,7 @@ export class Partie extends Server<Env> {
    */
   private equipes(): DefinitionPion[] {
     return Array.from({ length: this.salon.nbEquipes }, (_, i) => ({
-      nom: NOMS_EQUIPES[i],
+      nom: this.salon.nomsEquipes[i] ?? NOMS_EQUIPES[i],
       membres: this.salon.joueurs.filter((j) => j.equipe === i).map((j) => j.nom),
     }));
   }

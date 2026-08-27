@@ -3,11 +3,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Apéro Party",
-  description: "Le jeu de plateau de soirée. Trouve les étoiles, distribue les culs secs.",
+  description: "Le jeu de plateau de soirée. Trouve les étoiles, distribue les gorgées.",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0f172a",
+  themeColor: "#bfe8ff",
   width: "device-width",
   initialScale: 1,
   // Le plateau a son propre zoom : le pinch du navigateur ne ferait que gêner.

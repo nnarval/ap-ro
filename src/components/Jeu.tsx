@@ -4,13 +4,35 @@ import { useEffect, useState } from "react";
 import { CarteAnnonce } from "@/components/CarteAnnonce";
 import { De } from "@/components/De";
 import { PlateauView } from "@/components/PlateauView";
+import { Roue } from "@/components/Roue";
 import { REGLAGES } from "@/game/config";
-import { defiParId } from "@/game/defis";
+import { texteDefi } from "@/game/defis";
 import { classement, pionActif, pionsSurCaseActive } from "@/game/partie";
 import type { Action, EtatPartie, Pion } from "@/game/types";
 
 const DELAI_PAS_MS = 340;
 const DELAI_RESOLUTION_MS = 550;
+
+/** Les moments que tout le monde regarde en même temps, quel que soit le
+ *  téléphone : réflexe, roulette, événement, fin de manche, duel. */
+const PHASES_PARTAGEES = new Set<EtatPartie["phase"]>([
+  "reflexe",
+  "roulette",
+  "evenement",
+  "roueManche",
+  "defiCollectif",
+  "defiDuel",
+]);
+
+/** Noir ou blanc sur une couleur donnée, pour garder le texte lisible. */
+function couleurTexte(hex?: string): string {
+  if (!hex) return "#0f2a43";
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#0f2a43" : "#ffffff";
+}
 
 export function Bouton({
   children,
@@ -26,10 +48,14 @@ export function Bouton({
   disabled?: boolean;
 }) {
   const base =
-    "w-full rounded-xl py-3.5 text-center font-semibold transition active:scale-[0.98] disabled:opacity-40";
+    "w-full rounded-2xl py-3.5 text-center font-extrabold transition active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100";
   if (variante === "discret") {
     return (
-      <button onClick={onClick} disabled={disabled} className={`${base} bg-slate-800 text-slate-200`}>
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        className={`${base} bg-[#eef4f8] text-[#0f2a43] shadow-[0_2px_0_#cdd9e3]`}
+      >
         {children}
       </button>
     );
@@ -38,8 +64,8 @@ export function Bouton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`${base} text-slate-950`}
-      style={{ backgroundColor: couleur ?? "#f1f5f9" }}
+      className={`${base} shadow-[0_3px_0_rgba(15,42,67,0.25)]`}
+      style={{ backgroundColor: couleur ?? "#16c47f", color: couleurTexte(couleur ?? "#16c47f") }}
     >
       {children}
     </button>
@@ -58,6 +84,102 @@ function GrillePions({ pions, onChoisir }: { pions: Pion[]; onChoisir: (id: stri
   );
 }
 
+/** La roulette à shot : la roue des couleurs désigne qui boit. */
+function Roulette({ etat, envoyer }: { etat: EtatPartie; envoyer: (a: Action) => void }) {
+  const [tournee, setTournee] = useState(false);
+  const designe = etat.pions.find((p) => p.id === etat.equipeShot);
+  const index = etat.pions.findIndex((p) => p.id === etat.equipeShot);
+
+  return (
+    <CarteAnnonce couleur="#ec4899" icone="🥃" surtitre="Roulette à shot" titre="La roue tourne…">
+      <Roue
+        key={etat.equipeShot ?? "roue"}
+        segments={etat.pions.map((p) => ({ label: p.nom, couleur: p.couleur }))}
+        gagnantIndex={Math.max(0, index)}
+        onFini={() => setTournee(true)}
+        taille={230}
+      />
+      {tournee && designe && (
+        <div style={{ animation: "carte-contenu 300ms ease-out both" }}>
+          <p className="text-lg font-black" style={{ color: designe.couleur }}>
+            {designe.nom} boivent un shot 🥃
+          </p>
+          <Bouton onClick={() => envoyer({ type: "CONTINUER" })}>Continuer</Bouton>
+        </div>
+      )}
+    </CarteAnnonce>
+  );
+}
+
+/** Fin de manche : roue à deux côtés, puis roue des équipes si besoin, puis le
+ *  défi et le choix du vainqueur. */
+function FinDeManche({ etat, envoyer }: { etat: EtatPartie; envoyer: (a: Action) => void }) {
+  // 0 = roue à deux côtés, 1 = roue des équipes, 2 = défi + vainqueur.
+  const [etape, setEtape] = useState(0);
+  const creatrice = etat.pions.find((p) => p.id === etat.equipeCreatriceId);
+  const carte = texteDefi(etat.defiId, etat.cartesPerso);
+
+  const deuxCotes = [
+    { label: "Une équipe crée", couleur: "#a855f7" },
+    { label: "Carte du jeu", couleur: "#16c47f" },
+  ];
+  const gagnantCote = etat.sourceDefi === "equipe" ? 0 : 1;
+
+  return (
+    <CarteAnnonce
+      couleur="#facc15"
+      icone="🏆"
+      surtitre={`Fin de la manche ${etat.manche}`}
+      titre="Défi pour une étoile"
+    >
+      {etape === 0 && (
+        <Roue
+          key="cote"
+          segments={deuxCotes}
+          gagnantIndex={gagnantCote}
+          onFini={() => setEtape(etat.sourceDefi === "equipe" ? 1 : 2)}
+          taille={230}
+        />
+      )}
+
+      {etape === 1 && (
+        <Roue
+          key="equipe"
+          segments={etat.pions.map((p) => ({ label: p.nom, couleur: p.couleur }))}
+          gagnantIndex={Math.max(0, etat.pions.findIndex((p) => p.id === etat.equipeCreatriceId))}
+          onFini={() => setEtape(2)}
+          taille={230}
+        />
+      )}
+
+      {etape === 2 && (
+        <div style={{ animation: "carte-contenu 300ms ease-out both" }}>
+          {etat.sourceDefi === "equipe" && creatrice ? (
+            <p className="mb-3 text-sm text-[#0f2a43]">
+              <span className="font-black" style={{ color: creatrice.couleur }}>
+                {creatrice.nom}
+              </span>{" "}
+              inventent le défi et l&apos;annoncent à voix haute.
+            </p>
+          ) : (
+            carte && (
+              <div className="mb-3">
+                <p className="text-base font-black text-[#0f2a43]">{carte.titre}</p>
+                <p className="mt-1 text-sm text-[#5b7891]">{carte.consigne}</p>
+              </div>
+            )
+          )}
+          <p className="mb-1 text-xs text-[#5b7891]">Qui gagne l&apos;étoile ⭐ ?</p>
+          <GrillePions
+            pions={etat.pions}
+            onChoisir={(vainqueurId) => envoyer({ type: "RESOUDRE_DEFI_COLLECTIF", vainqueurId })}
+          />
+        </div>
+      )}
+    </CarteAnnonce>
+  );
+}
+
 export interface JeuProps {
   etat: EtatPartie;
   envoyer: (action: Action) => void;
@@ -70,9 +192,9 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
   const [suivrePionActif, setSuivrePionActif] = useState(true);
 
   // Déplacement et résolution s'enchaînent tout seuls. Tous les téléphones
-  // lancent la minuterie : le plus rapide fait avancer, les autres sont
-  // ignorés par la garde du réducteur. C'est volontaire — si un appareil
-  // rame, la partie continue quand même.
+  // lancent la minuterie : le plus rapide fait avancer, les autres sont ignorés
+  // par la garde du réducteur. C'est volontaire — si un appareil rame, la partie
+  // continue quand même.
   useEffect(() => {
     if (etat.phase === "deplacement") {
       const t = setTimeout(
@@ -89,53 +211,36 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
 
   const actif = pionActif(etat);
   const adversaire = etat.pions.find((p) => p.id === etat.adversaireId);
-  const defi = etat.defiId ? defiParId(etat.defiId) : null;
+  const defi = texteDefi(etat.defiId, etat.cartesPerso);
   const montreDe = etat.phase === "lancer" || etat.phase === "deplacement";
   const monPion = etat.pions.find((p) => p.id === monPionId);
-  // C'est le téléphone de l'équipe qui joue qui pilote. Les autres regardent.
+  // C'est le téléphone de l'équipe qui joue qui pilote. Les autres regardent,
+  // sauf pour les moments partagés que tout le monde voit.
   const jeMene = monPionId === null || monPionId === actif.id;
-  const cleCarte = `${etat.phase}-${etat.manche}-${etat.indexTour}-${etat.defiId}`;
+  const voitCarte = jeMene || PHASES_PARTAGEES.has(etat.phase);
+  const cleCarte = `${etat.phase}-${etat.manche}-${etat.indexTour}-${etat.defiId}-${etat.sourceDefi}`;
 
   function carte() {
-    if (!jeMene) return null;
+    if (!voitCarte) return null;
 
     switch (etat.phase) {
-      case "defiInstantane":
+      case "reflexe":
         return (
           <CarteAnnonce
             key={cleCarte}
             couleur="#f43f5e"
             icone="⚡"
-            surtitre="Duel éclair"
-            titre={defi?.titre ?? "Défi"}
+            surtitre="Réflexe"
+            titre={defi?.titre ?? "Réflexe"}
             consigne={defi?.consigne}
           >
-            <p className="text-xs text-slate-400">
-              Qui a gagné ? Les autres boivent {REGLAGES.gorgeesPerdantInstantane} gorgées.
+            <p className="text-xs text-[#5b7891]">
+              Tout le monde regarde — désignez qui a gagné.
             </p>
             <GrillePions
               pions={pionsSurCaseActive(etat)}
-              onChoisir={(vainqueurId) => envoyer({ type: "RESOUDRE_DEFI_INSTANTANE", vainqueurId })}
+              onChoisir={(vainqueurId) => envoyer({ type: "RESOUDRE_REFLEXE", vainqueurId })}
             />
-          </CarteAnnonce>
-        );
-
-      case "choixMalus":
-        return (
-          <CarteAnnonce
-            key={cleCarte}
-            couleur="#ef4444"
-            icone="💀"
-            surtitre="Malus"
-            titre={`${actif.nom}, tu choisis`}
-            consigne="Les pièces ou l'honneur."
-          >
-            <Bouton onClick={() => envoyer({ type: "CHOISIR_MALUS", gage: false })} couleur="#ef4444">
-              −{REGLAGES.perteMalus} pièces
-            </Bouton>
-            <Bouton onClick={() => envoyer({ type: "CHOISIR_MALUS", gage: true })} variante="discret">
-              Plutôt un gage
-            </Bouton>
           </CarteAnnonce>
         );
 
@@ -146,7 +251,7 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
             couleur="#a855f7"
             icone="⚔️"
             surtitre="Case défi"
-            titre={`${actif.nom} choisit sa victime`}
+            titre="Qui défies-tu ?"
             consigne="Le défi ne sera révélé qu'après."
           >
             <GrillePions
@@ -167,7 +272,7 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
             titre={defi?.titre ?? "Duel"}
             consigne={defi?.consigne}
           >
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-[#5b7891]">
               Qui gagne ? +{REGLAGES.gainDefiDuel} pièces pour le vainqueur.
             </p>
             <GrillePions
@@ -177,25 +282,62 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
           </CarteAnnonce>
         );
 
-      case "defiCollectif":
+      case "choixMalus":
+        return (
+          <CarteAnnonce
+            key={cleCarte}
+            couleur="#ef4444"
+            icone="❗"
+            surtitre="Malus"
+            titre={defi?.titre ?? "Gage"}
+            consigne={defi?.consigne}
+          >
+            <Bouton onClick={() => envoyer({ type: "CHOISIR_MALUS", gage: true })} couleur="#ef4444">
+              Je relève le gage
+            </Bouton>
+            <Bouton onClick={() => envoyer({ type: "CHOISIR_MALUS", gage: false })} variante="discret">
+              Je refuse (−{REGLAGES.perteMalus} 🪙)
+            </Bouton>
+          </CarteAnnonce>
+        );
+
+      case "evenement":
+        return (
+          <CarteAnnonce
+            key={cleCarte}
+            couleur="#3b82f6"
+            icone="❓"
+            surtitre="Case événement"
+            titre="Surprise !"
+            consigne={etat.evenementTexte ?? undefined}
+          >
+            <Bouton onClick={() => envoyer({ type: "CONTINUER" })} couleur="#3b82f6">
+              Continuer
+            </Bouton>
+          </CarteAnnonce>
+        );
+
+      case "roulette":
+        return <Roulette key={cleCarte} etat={etat} envoyer={envoyer} />;
+
+      case "roueManche":
         return (
           <CarteAnnonce
             key={cleCarte}
             couleur="#facc15"
-            icone="🏆"
+            icone="🎡"
             surtitre={`Fin de la manche ${etat.manche}`}
-            titre={defi?.titre ?? "Défi collectif"}
-            consigne={defi?.consigne}
+            titre="La roue des défis"
+            consigne="Une équipe invente le défi, ou c'est une carte du jeu. On tourne !"
           >
-            <p className="text-xs text-slate-400">
-              Tout le monde joue. Le gagnant prend une étoile ⭐
-            </p>
-            <GrillePions
-              pions={etat.pions}
-              onChoisir={(vainqueurId) => envoyer({ type: "RESOUDRE_DEFI_COLLECTIF", vainqueurId })}
-            />
+            <Bouton onClick={() => envoyer({ type: "LANCER_ROUE_MANCHE" })} couleur="#facc15">
+              Tourner la roue
+            </Bouton>
           </CarteAnnonce>
         );
+
+      case "defiCollectif":
+        return <FinDeManche key={cleCarte} etat={etat} envoyer={envoyer} />;
 
       case "boutique":
         return (
@@ -222,7 +364,7 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
                   variante="discret"
                   disabled={actif.pieces < n * REGLAGES.prixGorgee}
                 >
-                  🍺 {n}
+                  🥤 {n}
                 </Bouton>
               ))}
             </div>
@@ -238,15 +380,19 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-slate-900">
-      <header className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
-        <div className="flex gap-3 text-slate-300">
-          <span>Manche {etat.manche}</span>
-          <span>⭐ {etat.etoilesRestantes} à prendre</span>
+    <div className="flex h-dvh flex-col">
+      <header className="feston flex items-center justify-between gap-2 px-3 py-2 text-xs">
+        <div className="flex gap-2">
+          <span className="rounded-full bg-white/80 px-3 py-1 font-bold text-[#0f2a43] shadow-sm">
+            Manche {etat.manche}
+          </span>
+          <span className="rounded-full bg-[#facc15] px-3 py-1 font-bold text-[#0f2a43] shadow-sm">
+            ⭐ {etat.etoilesRestantes} à prendre
+          </span>
         </div>
         <button
           onClick={() => setSuivrePionActif((v) => !v)}
-          className="rounded-full bg-slate-800 px-3 py-1 font-medium text-slate-200 active:bg-slate-700"
+          className="rounded-full bg-white/80 px-3 py-1 font-bold text-[#0f2a43] shadow-sm active:bg-white"
         >
           {suivrePionActif ? "Vue d'ensemble" : "Suivre le pion"}
         </button>
@@ -258,6 +404,7 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
           pions={etat.pions}
           pionActifId={actif.id}
           etoilesSur={etat.etoilesSur}
+          dernierSautEtoile={etat.dernierSautEtoile}
           choix={jeMene ? etat.choix : []}
           onChoisir={(caseId) => envoyer({ type: "CHOISIR_CHEMIN", caseId })}
           suivrePionActif={suivrePionActif}
@@ -273,34 +420,34 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
         {etat.pions.map((p) => (
           <div
             key={p.id}
-            className={`rounded-lg px-1.5 py-1 text-center text-[11px] ${
-              p.id === actif.id ? "bg-slate-700" : "bg-slate-800/60"
-            } ${p.id === monPionId ? "ring-1 ring-slate-400" : ""}`}
+            className={`rounded-xl px-1.5 py-1 text-center text-[11px] shadow-sm ${
+              p.id === actif.id ? "bg-white" : "bg-white/70"
+            } ${p.id === monPionId ? "ring-2 ring-[#0f2a43]" : ""}`}
           >
-            <div className="flex items-center justify-center gap-1 font-medium">
+            <div className="flex items-center justify-center gap-1 font-bold">
               <span
                 className="inline-block h-2 w-2 shrink-0 rounded-full"
                 style={{ backgroundColor: p.couleur }}
               />
-              <span className="truncate text-slate-200">{p.nom}</span>
+              <span className="truncate text-[#0f2a43]">{p.nom}</span>
             </div>
-            <div className="mt-0.5 text-slate-400">
+            <div className="mt-0.5 text-[#5b7891]">
               ⭐{p.etoiles} 🪙{p.pieces}
-              {p.gorgees > 0 && <span className="text-amber-300"> 🍺{p.gorgees}</span>}
+              {p.gorgees > 0 && <span className="text-amber-600"> 🥤{p.gorgees}</span>}
             </div>
           </div>
         ))}
       </div>
 
-      <footer className="space-y-2 border-t border-slate-800 px-3 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <p className="truncate text-center text-xs text-slate-400">
+      <footer className="space-y-2 border-t border-[#cfe4f0] bg-white/70 px-3 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <p className="truncate text-center text-xs text-[#5b7891]">
           {etat.journal.at(-1)?.texte ?? "La partie commence"}
         </p>
 
-        {!jeMene && etat.phase !== "terminee" && (
+        {!jeMene && etat.phase !== "terminee" && !PHASES_PARTAGEES.has(etat.phase) && (
           // Les noms d'équipe portent déjà leur article (« Les Rouges ») :
           // toute tournure avec préposition donnerait « au tour de Les Rouges ».
-          <p className="py-3 text-center font-semibold" style={{ color: actif.couleur }}>
+          <p className="py-3 text-center font-extrabold" style={{ color: actif.couleur }}>
             {actif.nom} jouent
           </p>
         )}
@@ -312,13 +459,13 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
         )}
 
         {jeMene && etat.phase === "deplacement" && (
-          <p className="py-3 text-center font-semibold text-slate-300">
+          <p className="py-3 text-center font-extrabold text-[#0f2a43]">
             encore {etat.pasRestants} case{etat.pasRestants > 1 ? "s" : ""}
           </p>
         )}
 
         {jeMene && etat.phase === "croisement" && (
-          <p className="py-3 text-center font-semibold text-amber-300">
+          <p className="py-3 text-center font-extrabold text-amber-600">
             Croisement — touche la case de ton choix
           </p>
         )}
@@ -327,7 +474,7 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
           <>
             {actif.gorgees > 0 && (
               <div className="flex flex-wrap items-center justify-center gap-1.5 pb-1">
-                <span className="text-xs text-slate-400">Offrir une gorgée :</span>
+                <span className="text-xs text-[#5b7891]">Offrir une gorgée :</span>
                 {etat.pions
                   .filter((p) => p.id !== actif.id)
                   .map((p) => (
@@ -336,8 +483,8 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
                       onClick={() =>
                         envoyer({ type: "DONNER_GORGEE", donneurId: actif.id, receveurId: p.id })
                       }
-                      className="rounded-full px-2 py-0.5 text-[11px] font-medium text-slate-950"
-                      style={{ backgroundColor: p.couleur }}
+                      className="rounded-full px-2 py-0.5 text-[11px] font-bold"
+                      style={{ backgroundColor: p.couleur, color: couleurTexte(p.couleur) }}
                     >
                       {p.nom}
                     </button>
@@ -350,17 +497,20 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
 
         {etat.phase === "terminee" && (
           <div className="space-y-2 text-center">
-            <p className="text-sm text-slate-400">Terminé — les culs secs à distribuer :</p>
+            <p className="text-sm text-[#5b7891]">Terminé — les gorgées à distribuer :</p>
             <ul className="space-y-0.5 text-sm">
               {classement(etat).map((p, i) => (
                 <li key={p.id}>
-                  <span className="text-slate-500">{i + 1}.</span>{" "}
-                  <span style={{ color: p.couleur }}>{p.nom}</span> — {p.etoiles} ⭐
+                  <span className="text-[#5b7891]">{i + 1}.</span>{" "}
+                  <span className="font-bold" style={{ color: p.couleur }}>
+                    {p.nom}
+                  </span>{" "}
+                  — {p.etoiles} ⭐
                 </li>
               ))}
             </ul>
             {onRejouer && (
-              <Bouton onClick={onRejouer} couleur="#34d399">
+              <Bouton onClick={onRejouer} couleur="#16c47f">
                 Nouvelle partie
               </Bouton>
             )}
@@ -368,8 +518,11 @@ export function Jeu({ etat, envoyer, monPionId, onRejouer }: JeuProps) {
         )}
 
         {monPion && (
-          <p className="text-center text-[11px] text-slate-500">
-            Tu joues avec <span style={{ color: monPion.couleur }}>{monPion.nom}</span>
+          <p className="text-center text-[11px] text-[#5b7891]">
+            Tu joues avec{" "}
+            <span className="font-bold" style={{ color: monPion.couleur }}>
+              {monPion.nom}
+            </span>
           </p>
         )}
       </footer>

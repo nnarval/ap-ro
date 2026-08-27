@@ -1,3 +1,4 @@
+import type { Ambiance, CartePerso, CategorieDefi } from "../game/defis";
 import type { Action, EtatPartie } from "../game/types";
 
 /**
@@ -21,9 +22,7 @@ export function genererCode(): string {
 }
 
 export function codeValide(code: string): boolean {
-  return (
-    code.length === LONGUEUR_CODE && [...code].every((c) => ALPHABET.includes(c))
-  );
+  return code.length === LONGUEUR_CODE && [...code].every((c) => ALPHABET.includes(c));
 }
 
 export interface JoueurSalon {
@@ -41,12 +40,25 @@ export interface Salon {
   hoteId: string | null;
   joueurs: JoueurSalon[];
   nbEquipes: number;
+  /** Noms d'équipe, indexés par équipe. Chaque équipe modifie le sien. */
+  nomsEquipes: string[];
+  /** Objectif d'étoiles choisi par l'hôte. */
+  objectif: number;
+  /** Ambiance choisie par l'hôte. */
+  ambiance: Ambiance;
+  /** Cartes écrites par les équipes, avant le lancement. */
+  cartesPerso: CartePerso[];
 }
 
 export type MessageClient =
   | { type: "rejoindre"; nom: string }
   | { type: "changerEquipe"; joueurId: string; equipe: number }
   | { type: "reglerEquipes"; nbEquipes: number }
+  | { type: "renommerEquipe"; equipe: number; nom: string }
+  | { type: "reglerObjectif"; objectif: number }
+  | { type: "reglerAmbiance"; ambiance: Ambiance }
+  | { type: "ajouterCartePerso"; categorie: CategorieDefi; texte: string }
+  | { type: "supprimerCartePerso"; id: string }
   | { type: "demarrer" }
   | { type: "action"; action: Action }
   | { type: "rejouer" };

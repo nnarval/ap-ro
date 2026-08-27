@@ -1,12 +1,34 @@
 @import "tailwindcss";
 
+:root {
+  /* Palette claire, inspirée du rendu joué : ciel bleu, cartes blanches. */
+  --ciel-haut: #bfe8ff;
+  --ciel-bas: #e9f9ff;
+  --encre: #0f2a43;
+  --encre-douce: #5b7891;
+  --carte: #ffffff;
+  --accent: #ff3d7f;
+  --ok: #16c47f;
+}
+
 html,
 body {
   height: 100%;
   overscroll-behavior: none;
-  background: #0f172a;
-  color: #f8fafc;
+  color: var(--encre);
   -webkit-tap-highlight-color: transparent;
+  background:
+    radial-gradient(120% 80% at 50% 0%, var(--ciel-haut) 0%, var(--ciel-bas) 60%, #ffffff 100%)
+      fixed;
+}
+
+/* Le petit feston de triangles en haut d'écran, comme dans le jeu. */
+.feston {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.5) 0 10px,
+    transparent 10px 20px
+  );
 }
 
 @keyframes voile-entree {
@@ -18,8 +40,8 @@ body {
   }
 }
 
-/* La carte arrive en dépassant légèrement sa taille finale : c'est ce petit
-   rebond qui la fait claquer plutôt qu'apparaître. */
+/* La carte arrive en dépassant légèrement sa taille finale : ce petit rebond la
+   fait claquer plutôt qu'apparaître. */
 @keyframes carte-entree {
   from {
     opacity: 0;
@@ -42,7 +64,7 @@ body {
   }
 }
 
-/* Halo qui pulse derrière l'icône. */
+/* Halo qui pulse derrière l'icône d'une carte. */
 @keyframes halo {
   0%,
   100% {
@@ -52,6 +74,57 @@ body {
   50% {
     transform: scale(1.25);
     opacity: 0.1;
+  }
+}
+
+/* L'étoile qui vient d'être gagnée jaillit avant de sauter ailleurs. */
+@keyframes etoile-gagnee {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  40% {
+    transform: scale(1.6);
+    opacity: 1;
+  }
+  70% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0) translateY(-40px);
+    opacity: 0;
+  }
+}
+
+/* L'étoile réapparaît sur sa nouvelle case. */
+@keyframes etoile-arrivee {
+  0% {
+    transform: scale(0) translateY(-30px);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.4);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Rebond doux, pour les tuiles du code et les badges. */
+@keyframes pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
   }
 }
 

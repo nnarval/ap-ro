@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * La carte plein écran qui annonce ce qui arrive au joueur : défi, malus,
- * boutique… Elle prend tout l'écran parce que c'est le moment où les gens
- * doivent lever les yeux du plateau et faire quelque chose.
+ * La carte plein écran qui annonce ce qui arrive à l'équipe : défi, malus,
+ * roulette, boutique… Elle prend tout l'écran parce que c'est le moment où les
+ * gens doivent lever les yeux du plateau et faire quelque chose.
  */
 export interface CarteAnnonceProps {
   /** Couleur du type de case, pour que la carte parle le même langage que le
@@ -35,17 +35,20 @@ export function CarteAnnonce({
       aria-label={`${surtitre} : ${titre}`}
     >
       <div
-        className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm"
-        style={{ animation: "voile-entree 220ms ease-out both" }}
+        className="absolute inset-0"
+        style={{
+          background: "rgba(15, 42, 67, 0.35)",
+          backdropFilter: "blur(3px)",
+          animation: "voile-entree 220ms ease-out both",
+        }}
       />
 
       <div
-        className="relative w-full max-w-sm rounded-3xl border p-6 text-center shadow-2xl"
+        className="relative w-full max-w-sm rounded-[28px] bg-white p-6 text-center"
         style={{
           animation: "carte-entree 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both",
-          borderColor: couleur,
-          background: `linear-gradient(160deg, ${couleur}22 0%, #0f172a 55%)`,
-          boxShadow: `0 25px 60px -12px ${couleur}55`,
+          border: `3px solid ${couleur}`,
+          boxShadow: `0 24px 60px -12px ${couleur}66, 0 6px 20px rgba(15,42,67,0.15)`,
         }}
       >
         <div className="relative mx-auto mb-3 flex h-20 w-20 items-center justify-center">
@@ -55,25 +58,25 @@ export function CarteAnnonce({
           />
           <span
             className="relative flex h-16 w-16 items-center justify-center rounded-full text-3xl"
-            style={{ backgroundColor: `${couleur}33`, border: `2px solid ${couleur}` }}
+            style={{ backgroundColor: `${couleur}22`, border: `2px solid ${couleur}` }}
           >
             {icone}
           </span>
         </div>
 
         <div style={{ animation: "carte-contenu 380ms ease-out 140ms both" }}>
-          <p
-            className="text-xs font-bold tracking-[0.2em] uppercase"
-            style={{ color: couleur }}
-          >
+          <p className="text-xs font-extrabold tracking-[0.2em] uppercase" style={{ color: couleur }}>
             {surtitre}
           </p>
-          <h2 className="mt-1 text-2xl leading-tight font-black text-slate-50">{titre}</h2>
-          {consigne && <p className="mt-2 text-sm text-slate-300">{consigne}</p>}
+          <h2 className="mt-1 text-2xl leading-tight font-black text-[#0f2a43]">{titre}</h2>
+          {consigne && <p className="mt-2 text-sm text-[#5b7891]">{consigne}</p>}
         </div>
 
         {children && (
-          <div className="mt-5 space-y-2" style={{ animation: "carte-contenu 380ms ease-out 240ms both" }}>
+          <div
+            className="mt-5 space-y-2"
+            style={{ animation: "carte-contenu 380ms ease-out 240ms both" }}
+          >
             {children}
           </div>
         )}

@@ -6,7 +6,7 @@ import type { Case, Pion, Plateau, TypeCase } from "@/game/types";
 /** Côté du carré de rendu, en unités SVG. La caméra travaille là-dedans. */
 const VUE = 1000;
 const ZOOM_SUIVI = 2.4;
-const COTE_CASE = 26;
+const COTE_CASE = 28;
 
 const COULEURS_CASES: Record<TypeCase, string> = {
   depart: "#e2e8f0",
@@ -15,17 +15,17 @@ const COULEURS_CASES: Record<TypeCase, string> = {
   malus: "#ef4444",
   evenement: "#3b82f6",
   boutique: "#f59e0b",
-  etoile: "#facc15",
+  roulette: "#ec4899",
 };
 
 const ICONES_CASES: Record<TypeCase, string> = {
   depart: "🏁",
   defi: "⚔️",
-  bonus: "🪙",
-  malus: "💀",
+  bonus: "➕",
+  malus: "❗",
   evenement: "❓",
   boutique: "🛒",
-  etoile: "☆",
+  roulette: "🥃",
 };
 
 const LIBELLES_CASES: Record<TypeCase, string> = {
@@ -35,17 +35,8 @@ const LIBELLES_CASES: Record<TypeCase, string> = {
   malus: "Malus",
   evenement: "Événement",
   boutique: "Boutique",
-  etoile: "Emplacement d'étoile",
+  roulette: "Roulette à shot",
 };
-
-/** Assombrit une couleur hex, pour la tranche des cases. */
-function assombrir(hex: string, facteur: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.round(((n >> 16) & 255) * facteur);
-  const v = Math.round(((n >> 8) & 255) * facteur);
-  const b = Math.round((n & 255) * facteur);
-  return `rgb(${r},${v},${b})`;
-}
 
 export interface PlateauViewProps {
   plateau: Plateau;
@@ -53,6 +44,8 @@ export interface PlateauViewProps {
   pionActifId: string;
   /** Cases portant une étoile. */
   etoilesSur: string[];
+  /** Dernier saut d'étoile, pour l'animer. */
+  dernierSautEtoile: { de: string; vers: string } | null;
   /** Cases proposées au croisement. Cliquables. */
   choix: string[];
   onChoisir?: (caseId: string) => void;
@@ -65,6 +58,7 @@ export function PlateauView({
   pions,
   pionActifId,
   etoilesSur,
+  dernierSautEtoile,
   choix,
   onChoisir,
   suivrePionActif,
@@ -138,9 +132,9 @@ export function PlateauView({
       aria-label="Plateau de jeu"
     >
       <defs>
-        <radialGradient id="fondPlateau" cx="50%" cy="45%" r="75%">
-          <stop offset="0%" stopColor="#1e293b" />
-          <stop offset="100%" stopColor="#0b1120" />
+        <radialGradient id="fondPlateau" cx="50%" cy="35%" r="80%">
+          <stop offset="0%" stopColor="#d6f0ff" />
+          <stop offset="100%" stopColor="#b3e2ff" />
         </radialGradient>
       </defs>
       <rect width={VUE} height={VUE} fill="url(#fondPlateau)" />
@@ -154,7 +148,19 @@ export function PlateauView({
           transition: "transform 650ms cubic-bezier(0.22, 1, 0.36, 1)",
         }}
       >
-        {/* La piste, sous les cases. */}
+        {/* La piste : un boudin blanc cerné de foncé, sous les cases. */}
+        {aretes.map(({ a, b, raccourci }) => (
+          <line
+            key={`casing-${a.id}-${b.id}`}
+            x1={a.x}
+            y1={a.y}
+            x2={b.x}
+            y2={b.y}
+            stroke="#0f2a43"
+            strokeWidth={raccourci ? 26 : 36}
+            strokeLinecap="round"
+          />
+        ))}
         {aretes.map(({ a, b, raccourci }) => (
           <line
             key={`piste-${a.id}-${b.id}`}
@@ -162,28 +168,17 @@ export function PlateauView({
             y1={a.y}
             x2={b.x}
             y2={b.y}
-            stroke="#0b1120"
-            strokeWidth={raccourci ? 20 : 30}
+            stroke="#ffffff"
+            strokeWidth={raccourci ? 16 : 26}
             strokeLinecap="round"
-          />
-        ))}
-        {aretes.map(({ a, b, raccourci }) => (
-          <line
-            key={`liseret-${a.id}-${b.id}`}
-            x1={a.x}
-            y1={a.y}
-            x2={b.x}
-            y2={b.y}
-            stroke={raccourci ? "#334155" : "#1e293b"}
-            strokeWidth={raccourci ? 14 : 24}
-            strokeLinecap="round"
-            strokeDasharray={raccourci ? "10 8" : undefined}
+            strokeDasharray={raccourci ? "2 16" : undefined}
           />
         ))}
 
         {Object.values(plateau.cases).map((c) => {
           const proposee = choix.includes(c.id);
           const porteEtoile = etoilesSur.includes(c.id);
+          const arriveeEtoile = dernierSautEtoile?.vers === c.id;
           const couleur = COULEURS_CASES[c.type];
           const demi = COTE_CASE / 2;
 
@@ -194,24 +189,25 @@ export function PlateauView({
               style={{ cursor: proposee ? "pointer" : "default" }}
             >
               <g transform={`translate(${c.x} ${c.y}) rotate(${angles[c.id]})`}>
-                {/* Tranche : donne l'épaisseur de la case. */}
+                {/* Ombre portée douce. */}
                 <rect
                   x={-demi}
-                  y={-demi + 3}
+                  y={-demi + 4}
                   width={COTE_CASE}
                   height={COTE_CASE}
-                  rx={6}
-                  fill={assombrir(couleur, 0.45)}
+                  rx={8}
+                  fill="#0f2a43"
+                  opacity={0.18}
                 />
                 <rect
                   x={-demi}
                   y={-demi}
                   width={COTE_CASE}
                   height={COTE_CASE}
-                  rx={6}
+                  rx={8}
                   fill={couleur}
-                  stroke={proposee ? "#ffffff" : assombrir(couleur, 0.7)}
-                  strokeWidth={proposee ? 2.5 : 1}
+                  stroke={proposee ? "#0f2a43" : "#ffffff"}
+                  strokeWidth={proposee ? 3 : 2}
                 >
                   <title>{LIBELLES_CASES[c.type]}</title>
                 </rect>
@@ -224,7 +220,6 @@ export function PlateauView({
                 y={c.y + 5}
                 textAnchor="middle"
                 fontSize={14}
-                opacity={c.type === "etoile" && !porteEtoile ? 0.5 : 1}
                 style={{ pointerEvents: "none" }}
               >
                 {ICONES_CASES[c.type]}
@@ -233,32 +228,34 @@ export function PlateauView({
               {porteEtoile && (
                 <text
                   x={c.x}
-                  y={c.y - 20}
+                  y={c.y - 22}
                   textAnchor="middle"
-                  fontSize={22}
-                  style={{ pointerEvents: "none" }}
+                  fontSize={24}
+                  style={{
+                    pointerEvents: "none",
+                    transformBox: "fill-box",
+                    transformOrigin: "center",
+                    animation: arriveeEtoile ? "etoile-arrivee 600ms ease-out both" : undefined,
+                  }}
                 >
                   ⭐
-                  <animate
-                    attributeName="y"
-                    values={`${c.y - 20};${c.y - 27};${c.y - 20}`}
-                    dur="2s"
-                    repeatCount="indefinite"
-                  />
+                  {!arriveeEtoile && (
+                    <animate
+                      attributeName="y"
+                      values={`${c.y - 22};${c.y - 29};${c.y - 22}`}
+                      dur="2s"
+                      repeatCount="indefinite"
+                    />
+                  )}
                 </text>
               )}
 
               {proposee && (
-                <circle cx={c.x} cy={c.y} r={20} fill="none" stroke="#ffffff" strokeWidth={2}>
-                  <animate
-                    attributeName="r"
-                    values="18;27;18"
-                    dur="1.2s"
-                    repeatCount="indefinite"
-                  />
+                <circle cx={c.x} cy={c.y} r={20} fill="none" stroke="#0f2a43" strokeWidth={2.5}>
+                  <animate attributeName="r" values="18;27;18" dur="1.2s" repeatCount="indefinite" />
                   <animate
                     attributeName="opacity"
-                    values="0.9;0.1;0.9"
+                    values="0.9;0.15;0.9"
                     dur="1.2s"
                     repeatCount="indefinite"
                   />
@@ -267,6 +264,25 @@ export function PlateauView({
             </g>
           );
         })}
+
+        {/* L'étoile qui vient d'être ramassée jaillit là où elle était. */}
+        {dernierSautEtoile && plateau.cases[dernierSautEtoile.de] && (
+          <text
+            key={`saut-${dernierSautEtoile.de}-${dernierSautEtoile.vers}`}
+            x={plateau.cases[dernierSautEtoile.de].x}
+            y={plateau.cases[dernierSautEtoile.de].y - 22}
+            textAnchor="middle"
+            fontSize={26}
+            style={{
+              pointerEvents: "none",
+              transformBox: "fill-box",
+              transformOrigin: "center",
+              animation: "etoile-gagnee 900ms ease-out both",
+            }}
+          >
+            ⭐
+          </text>
+        )}
 
         {positionsPions.map(({ pion, x, y }) => (
           <g
@@ -277,16 +293,16 @@ export function PlateauView({
               transition: "transform 300ms ease-out",
             }}
           >
-            <ellipse cx={0} cy={7} rx={7} ry={2.5} fill="#000000" opacity={0.45} />
+            <ellipse cx={0} cy={7} rx={7} ry={2.5} fill="#0f2a43" opacity={0.35} />
             <circle
               r={pion.id === pionActifId ? 8 : 6.5}
               cy={-2}
               fill={pion.couleur}
-              stroke="#f8fafc"
+              stroke="#ffffff"
               strokeWidth={pion.id === pionActifId ? 2.5 : 1.5}
             />
             {pion.id === pionActifId && (
-              <circle r={14} fill="none" stroke={pion.couleur} strokeWidth={2}>
+              <circle r={14} fill="none" stroke={pion.couleur} strokeWidth={2.5}>
                 <animate attributeName="r" values="11;20;11" dur="1.6s" repeatCount="indefinite" />
                 <animate
                   attributeName="opacity"
