@@ -11,3 +11,6 @@ build/
 next-env.d.ts
 
 .DS_Store
+
+# Cloudflare Worker : état et build locaux de wrangler dev
+.wrangler/
