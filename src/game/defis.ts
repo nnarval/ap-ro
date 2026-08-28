@@ -66,6 +66,15 @@ export const DEFIS: Defi[] = [
   { id: "r-chut", categorie: "reflexe", titre: "Chut", consigne: "Le premier qui parle ou qui rit boit 4 gorgées.", intensite: "medium", modes: ["local", "multi"] },
   { id: "r-debout", categorie: "reflexe", titre: "Debout !", consigne: "Le dernier debout sur ses deux pieds boit 5 gorgées.", intensite: "medium", modes: ["local", "multi"] },
   { id: "r-langue", categorie: "reflexe", titre: "Tire la langue", consigne: "Le dernier à tirer la langue boit 5 gorgées.", intensite: "hard", modes: ["local", "multi"] },
+  { id: "r-oreille", categorie: "reflexe", titre: "Attrape ton oreille", consigne: "Le dernier à attraper son oreille boit 3 gorgées.", intensite: "douce", modes: ["local", "multi"] },
+  { id: "r-genou", categorie: "reflexe", titre: "Genou à terre", consigne: "Le dernier à poser un genou au sol boit 4 gorgées.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "r-bras", categorie: "reflexe", titre: "Bras en l'air", consigne: "Le dernier à lever les deux bras boit 3 gorgées.", intensite: "douce", modes: ["local", "multi"] },
+  { id: "r-sante", categorie: "reflexe", titre: "Crie « Santé ! »", consigne: "Le dernier à crier « Santé ! » boit 4 gorgées.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "r-table", categorie: "reflexe", titre: "Doigt sur la table", consigne: "Le dernier à poser un doigt sur la table boit 3 gorgées.", intensite: "douce", modes: ["local", "multi"] },
+  { id: "r-yeux", categorie: "reflexe", titre: "Ferme les yeux", consigne: "Au top, fermez les yeux : le dernier à les fermer boit 4 gorgées.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "r-tete", categorie: "reflexe", titre: "Mains sur la tête", consigne: "Le dernier à poser ses deux mains sur sa tête boit 4 gorgées.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "r-bisou", categorie: "reflexe", titre: "Envoie un bisou", consigne: "Le dernier à envoyer un bisou à la ronde boit 5 gorgées.", intensite: "hard", modes: ["local", "multi"] },
+  { id: "r-assis", categorie: "reflexe", titre: "Debout, assis", consigne: "Au top, tout le monde se lève : le dernier debout boit 4 gorgées.", intensite: "medium", modes: ["local", "multi"] },
 
   // --- Duels : 1 contre 1, la carte dit qui l'emporte. Le perdant boit. ---
   { id: "d-bras", categorie: "duel", titre: "Bras de fer", consigne: "Bras de fer. Le perdant boit 4 gorgées.", intensite: "medium", modes: ["local", "multi"] },
@@ -74,6 +83,15 @@ export const DEFIS: Defi[] = [
   { id: "d-cul-sec", categorie: "duel", titre: "Le plus rapide", consigne: "Cul sec de vos verres au top. Le dernier à finir boit 3 gorgées de plus.", intensite: "hard", modes: ["local", "multi"] },
   { id: "d-equilibre", categorie: "duel", titre: "Sur un pied", consigne: "Tenez sur un pied. Le premier qui repose l'autre pied boit 5 gorgées.", intensite: "medium", modes: ["local", "multi"] },
   { id: "d-imitation", categorie: "duel", titre: "Le meilleur cri", consigne: "Chacun imite un animal. Les autres équipes votent : le moins convaincant boit 4 gorgées.", intensite: "hard", modes: ["local", "multi"] },
+  { id: "d-pouce", categorie: "duel", titre: "Bataille de pouces", consigne: "Bataille de pouces. Le perdant boit 4 gorgées.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "d-apnee", categorie: "duel", titre: "Apnée", consigne: "Retenez votre souffle : le premier à respirer boit 5 gorgées.", intensite: "hard", modes: ["local", "multi"] },
+  { id: "d-grimace", categorie: "duel", titre: "Grimace", consigne: "Chacun sa pire grimace : les autres votent, la moins réussie boit 4 gorgées.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "d-bras-tendu", categorie: "duel", titre: "Bras tendu", consigne: "Bras tendu à l'horizontale : le premier à le baisser boit 5 gorgées.", intensite: "hard", modes: ["local", "multi"] },
+  { id: "d-rire", categorie: "duel", titre: "Fais-moi rire", consigne: "Face à face : le premier qui rit boit 4 gorgées.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "d-pfc", categorie: "duel", titre: "Pierre-feuille-ciseaux", consigne: "Un seul lancer de pierre-feuille-ciseaux. Le perdant boit 3 gorgées.", intensite: "douce", modes: ["local", "multi"] },
+  { id: "d-chaise", categorie: "duel", titre: "Chaise invisible", consigne: "Dos au mur, chaise invisible : le premier à s'écrouler boit 5 gorgées.", intensite: "hard", modes: ["local", "multi"] },
+  { id: "d-compliment", categorie: "duel", titre: "Joute de compliments", consigne: "Compliments ironiques à tour de rôle : le premier à sécher boit 4 gorgées.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "d-alphabet", categorie: "duel", titre: "L'alphabet", consigne: "Récitez l'alphabet en alternant une lettre chacun : le premier à se tromper boit 4 gorgées.", intensite: "medium", modes: ["local", "multi"] },
 
   // --- Collectifs : fin de manche, tout le monde joue, une équipe gagne. ---
   { id: "c-premier-boit", categorie: "collectif", titre: "Le plus rapide", consigne: "Au top, tout le monde boit une gorgée. La première équipe à reposer son verre gagne.", intensite: "medium", modes: ["local", "multi"] },
@@ -82,6 +100,15 @@ export const DEFIS: Defi[] = [
   { id: "c-silence", categorie: "collectif", titre: "Le dernier à rire", consigne: "Tout le monde se fixe. La dernière équipe à garder son sérieux gagne.", intensite: "medium", modes: ["local", "multi"] },
   { id: "c-culture", categorie: "collectif", titre: "Cite trois", consigne: "L'hôte annonce un thème (marques de bière, prénoms…). La première équipe à en citer trois gagne.", intensite: "douce", modes: ["local", "multi"] },
   { id: "c-karaoke", categorie: "collectif", titre: "La chanson", consigne: "Chaque équipe chante 10 secondes d'un tube. La salle vote : la meilleure gagne.", intensite: "hard", modes: ["local", "multi"] },
+  { id: "c-tour", categorie: "collectif", titre: "Le tour de la pièce", consigne: "Au top, un membre par équipe fait le tour de la pièce en courant. La première revenue gagne.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "c-blague", categorie: "collectif", titre: "La meilleure blague", consigne: "Chaque équipe raconte une blague. La salle vote : la plus drôle gagne.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "c-imit", categorie: "collectif", titre: "L'imitation", consigne: "Chaque équipe imite quelqu'un de connu. La salle vote : la meilleure gagne.", intensite: "hard", modes: ["local", "multi"] },
+  { id: "c-objet", categorie: "collectif", titre: "Chasse à l'objet", consigne: "L'hôte nomme un objet. La première équipe à le rapporter gagne.", intensite: "douce", modes: ["local", "multi"] },
+  { id: "c-chore", categorie: "collectif", titre: "Chorégraphie", consigne: "Chaque équipe invente 5 secondes de choré. La salle vote : la meilleure gagne.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "c-note", categorie: "collectif", titre: "La plus longue note", consigne: "Chaque équipe tient une note chantée. La dernière équipe encore en souffle gagne.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "c-toast", categorie: "collectif", titre: "Le discours", consigne: "Chaque équipe fait un toast de 10 secondes. La salle vote : le meilleur gagne.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "c-devinette", categorie: "collectif", titre: "La devinette", consigne: "L'hôte pose une devinette. La première équipe à trouver gagne.", intensite: "douce", modes: ["local", "multi"] },
+  { id: "c-pyramide", categorie: "collectif", titre: "Pyramide de gobelets", consigne: "La première équipe à empiler 6 gobelets en pyramide gagne.", intensite: "medium", modes: ["local", "multi"] },
 
   // --- Malus : le gage à boire, refusable en payant des pièces. ---
   { id: "m-cul-sec", categorie: "malus", titre: "Petit cul sec", consigne: "Finis ton verre d'un trait, ou paie pour refuser.", intensite: "hard", modes: ["local", "multi"] },
@@ -89,6 +116,13 @@ export const DEFIS: Defi[] = [
   { id: "m-accent", categorie: "malus", titre: "Grosse honte", consigne: "Parle avec un accent ridicule jusqu'à ton prochain tour, ou paie pour refuser.", intensite: "medium", modes: ["local", "multi"] },
   { id: "m-compliment", categorie: "malus", titre: "Déclaration", consigne: "Fais un compliment gênant à l'équipe de ton choix, ou paie pour refuser.", intensite: "douce", modes: ["local", "multi"] },
   { id: "m-statue", categorie: "malus", titre: "Statue", consigne: "Reste immobile jusqu'à ton prochain tour (2 gorgées si tu bouges), ou paie pour refuser.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "m-fond", categorie: "malus", titre: "Fond de verre", consigne: "Finis le fond de ton verre cul sec, ou paie pour refuser.", intensite: "hard", modes: ["local", "multi"] },
+  { id: "m-chante", categorie: "malus", titre: "En chanson", consigne: "Parle en chantant jusqu'à ton prochain tour, ou paie pour refuser.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "m-ouinon", categorie: "malus", titre: "Ni oui ni non", consigne: "Interdit de dire « oui » ou « non » jusqu'à ton tour (2 gorgées par faute), ou paie pour refuser.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "m-service", categorie: "malus", titre: "Au service", consigne: "Ressers une autre équipe et bois une gorgée avec elle, ou paie pour refuser.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "m-aveugle", categorie: "malus", titre: "À l'aveugle", consigne: "Joue ton prochain tour les yeux fermés, ou paie pour refuser.", intensite: "medium", modes: ["local", "multi"] },
+  { id: "m-cadeau", categorie: "malus", titre: "Générosité forcée", consigne: "Distribue 3 gorgées à qui tu veux, ou paie pour refuser.", intensite: "douce", modes: ["local", "multi"] },
+  { id: "m-danse", categorie: "malus", titre: "Petit show", consigne: "Danse 10 secondes au milieu du groupe, ou paie pour refuser.", intensite: "hard", modes: ["local", "multi"] },
 ];
 
 const PAR_ID = new Map(DEFIS.map((d) => [d.id, d]));

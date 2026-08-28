@@ -590,7 +590,7 @@ export function reduire(etat: EtatPartie, action: Action): EtatPartie {
  */
 function evenement(etat: EtatPartie): EtatPartie {
   const actif = pionActif(etat);
-  const [i, rng] = tirerEntier(etat.rng, 0, 5);
+  const [i, rng] = tirerEntier(etat.rng, 0, 8);
   const base = { ...etat, rng };
 
   switch (i) {
@@ -634,6 +634,20 @@ function evenement(etat: EtatPartie): EtatPartie {
         `Racket : ${actif.nom} piquent ${vol} pièces à ${cible.nom}.`,
       );
     }
+    case 5: {
+      const texte = "Jackpot : +8 pièces !";
+      return annoncerEvenement(
+        { ...base, pions: majPionActif(base, { pieces: actif.pieces + 8 }) },
+        texte,
+      );
+    }
+    case 6: {
+      // Krach : tout le monde perd 2 pièces.
+      const pions = base.pions.map((p) => ({ ...p, pieces: Math.max(0, p.pieces - 2) }));
+      return annoncerEvenement({ ...base, pions }, "Krach général : toutes les équipes perdent 2 pièces.");
+    }
+    case 7:
+      return annoncerEvenement(base, "Tournée générale : tout le monde boit 2 gorgées.");
     default: {
       // Mini-roulette : la roue désigne une équipe qui boit un shot.
       const [j, rng2] = tirerEntier(base.rng, 0, base.pions.length - 1);
